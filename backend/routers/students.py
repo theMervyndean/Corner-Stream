@@ -1,10 +1,10 @@
-"""Students router — CRUD + Excel bulk upload."""
+"""Students router — CRUD + Excel bulk upload + student login provisioning."""
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, EmailStr, Field
 from typing import Optional, List
 from io import BytesIO
 import openpyxl
-from db import get_db, new_id, now_iso
+from db import get_db, hash_password, new_id, now_iso
 from auth_utils import get_current_user, require_roles
 
 router = APIRouter(prefix="/students", tags=["students"])
@@ -46,7 +46,26 @@ async def list_students(class_name: Optional[str] = None, user: dict = Depends(g
     if user["role"] == "parent":
         q["parent_email"] = user["email"]
     students = await db.students.find(q, {"_id": 0}).to_list(2000)
+    # Attach a "has_login" indicator for school_admin/super_admin
+    if user["role"] in ("school_admin", "super_admin"):
+        sids = [s["id"] for s in students]
+        login_users = await db.users.find({"role": "student", "student_id": {"$in": sids}}, {"_id": 0, "email": 1, "student_id": 1}).to_list(2000)
+        login_map = {u["student_id"]: u["email"] for u in login_users}
+        for s in students:
+            s["login_email"] = login_map.get(s["id"])
     return {"students": students}
+
+
+@router.get("/me")
+async def my_student_record(user: dict = Depends(require_roles("student"))):
+    db = get_db()
+    sid = user.get("student_id")
+    if not sid:
+        raise HTTPException(status_code=404, detail="No linked student record")
+    student = await db.students.find_one({"id": sid}, {"_id": 0})
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
+    return {"student": student}
 
 
 @router.post("")
@@ -138,3 +157,50 @@ async def bulk_upload(file: UploadFile = File(...), user: dict = Depends(require
             errors.append(f"Row {i}: {e}")
 
     return {"inserted": len(inserted), "errors": errors, "students": inserted}
+
+
+
+class LoginCreateIn(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=6)
+
+
+@router.post("/{student_id}/login")
+async def create_student_login(student_id: str, payload: LoginCreateIn, user: dict = Depends(require_roles("school_admin"))):
+    """Provision a student login (role=student) linked to this student record."""
+    db = get_db()
+    student = await db.students.find_one({"id": student_id, "school_id": user["school_id"]})
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
+    email = payload.email.lower().strip()
+    if await db.users.find_one({"email": email}):
+        raise HTTPException(status_code=400, detail="Email already in use")
+    # Remove any pre-existing student login for this student (replace flow)
+    await db.users.delete_many({"role": "student", "student_id": student_id})
+    user_doc = {
+        "id": new_id(),
+        "email": email,
+        "password_hash": hash_password(payload.password),
+        "name": student["name"],
+        "role": "student",
+        "school_id": student["school_id"],
+        "student_id": student_id,
+        "created_at": now_iso(),
+    }
+    await db.users.insert_one(user_doc)
+    return {"ok": True, "email": email}
+
+
+class PassportIn(BaseModel):
+    passport_url: str  # data URL
+
+
+@router.put("/{student_id}/passport")
+async def upload_passport(student_id: str, payload: PassportIn, user: dict = Depends(require_roles("school_admin", "super_admin"))):
+    db = get_db()
+    q = _scope_filter(user)
+    q["id"] = student_id
+    res = await db.students.update_one(q, {"$set": {"passport_url": payload.passport_url, "updated_at": now_iso()}})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Student not found")
+    return {"ok": True}

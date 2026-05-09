@@ -12,6 +12,7 @@ const ROLE_DASH = {
   school_admin: "/dashboard/school",
   teacher: "/dashboard/teacher",
   parent: "/dashboard/parent",
+  student: "/dashboard/student",
 };
 
 export default function Login() {
@@ -65,6 +66,7 @@ export default function Login() {
             <div>admin@demo.school / Admin@123</div>
             <div>teacher@demo.school / Teacher@123</div>
             <div>parent@demo.school / Parent@123</div>
+            <div>adaeze@demo.school / Student@123</div>
           </div>
         </div>
       </div>

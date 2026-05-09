@@ -1,0 +1,75 @@
+{
+  "summary": "Phase-2 backend + frontend testing of Corner Streams. All 30 Phase-1 + 15 new Phase-2 backend tests pass (45/45). Found and fixed one critical bug: PUT /api/subjects returned 500 due to MongoDB ObjectId leaking into response after insert_one mutated the doc. Frontend manually verified: student dashboard, school-admin Subjects tab, teacher CBT tab render correctly; PWA manifest + sw.js reachable.",
+  "backend_issues": {
+    "critical": [
+      {
+        "endpoint": "PUT /api/subjects",
+        "issue": "Returned 500 when creating subjects for a NEW class. Root cause: motor's insert_one() mutates the dict in-place to add `_id: ObjectId(...)`, which FastAPI/pydantic cannot serialize. FIXED by adding `doc.pop('_id', None)` before return.",
+        "priority": "HIGH"
+      }
+    ],
+    "minor": [
+      {
+        "endpoint": "POST /api/auth/login (student role)",
+        "issue": "Login response user object does NOT include `student_id` field even for role=student. JWT carries student_id correctly so /students/me works, but frontend convenience would benefit from echoing student_id in login response (and in /auth/me)."
+      },
+      {
+        "endpoint": "POST /api/students/{id}/login",
+        "issue": "Email is silently lowercased+stripped on insert; the response returns the lowercased value, but the input is mixed-case. Documented behavior (auth uses lowercase emails everywhere) but worth flagging in UI so school admins know how the login was actually stored."
+      },
+      {
+        "endpoint": "/api/payments/checkout/status/{session_id}",
+        "issue": "Phase-1 ticket — emergentintegrations Stripe metadata pydantic ValidationError. Phase-2 retest passed (status returned 200); the previously reported bug appears to be intermittent or session-specific. Keep monitoring."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {
+        "flow": "Student CBT take",
+        "issue": "Could not E2E test /cbt/{examId} timer/submit flow because the seeded JSS 1 Mathematics exam has already been attempted (one-shot). To exercise the timer + countdown + submit dialog, create a fresh exam via teacher UI (or via API) and provision a different student. UI inspection of the existing CBT card confirms it renders 'Score: 80% — Done' correctly after the prior submission.",
+        "affected_selectors": ["/cbt/:examId"]
+      }
+    ],
+    "design_issues": [
+      {
+        "screen": "Global",
+        "issues": [
+          "data-testid attributes still NOT present on most interactive controls (login form, dashboard tab triggers, CBT card buttons, Subjects tab actions). System prompt mandates this for robust automated regression. Phase-1 report flagged the same; please prioritise."
+        ]
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/backend/tests/phase2_test.py",
+    "/app/test_reports/pytest/all_results.xml",
+    "/app/test_reports/pytest/phase2_results.xml"
+  ],
+  "action_items": [
+    "(Optional) Echo student_id in /api/auth/login + /api/auth/me user object for student role for frontend convenience.",
+    "(Optional) When school admin provisions student login, return/display the lowercased email so admin knows the canonical login value.",
+    "Add data-testid attributes across StudentDashboard (subject cards, CBT card primary action, Result Checker button), SchoolAdminDashboard (Subjects tab trigger, add-subjects button, Create-login button per row, Passport upload button), TeacherDashboard (CBT exams tab trigger, Create exam button, Publish/Unpublish toggle, Attempts dialog trigger), CBTTake (option radio inputs, next/prev/submit buttons, timer label).",
+    "Consider seeding a SECOND CBT exam (e.g. JSS 1 English) so the Phase-2 student timer flow can be QA'd manually without first un-attempting the existing one.",
+    "Re-validate /api/payments/checkout/status/{session_id} once Stripe SDK metadata error is consistently observed — it passed in this run."
+  ],
+  "critical_code_review_comments": [
+    "MongoDB _id leak pattern is repeated risk in routers/subjects.py — fix applied. Audit all routers that do `insert_one(doc); return {..: doc}` (cbt.py uses `doc.pop('_id', None)` correctly; students.py does in `create_student`). Recommend a tiny helper `def serialize(doc): doc.pop('_id', None); return doc`.",
+    "routers/cbt.py update_exam mixes dict/model in `update['questions']` post `model_dump()` — current safeguard is fine but slightly defensive code is dead because model_dump() always yields dicts. Cleanup possible.",
+    "routers/cbt.py _upsert_score_from_cbt uses `await db.scores.update_one({'id': existing['id']}, ...)` — works, but if Phase-1 stored CA via a different teacher, the source flips to 'cbt' silently. Acceptable per spec but flag for visibility.",
+    "auth/login response builder strips `student_id` from User model dump. If User pydantic model doesn't list student_id, add it (Optional[str]) so the field surfaces.",
+    "Phase-1 critical comments on missing data-testid attrs and FRONTEND_URL CORS mismatch still stand."
+  ],
+  "updated_files": [
+    "/app/backend/routers/subjects.py (bug fix — pop _id before return)",
+    "/app/backend/tests/phase2_test.py (created, 15 tests)"
+  ],
+  "success_rate": {"backend": "100% (45/45)", "frontend": "Manual smoke pass on 3 dashboards + PWA"},
+  "test_credentials": "All seeded creds in /app/memory/test_credentials.md verified including Student (adaeze@demo.school / Student@123).",
+  "seed_data_creation": "Tests create TEST-prefixed students/exams; CBT test class fixture cleans up its exam + student. Subjects test deletes its TEST class. Some TEST_Bulk* students from Phase-1 still in roster (visible in admin students list screenshot).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend: run `pytest /app/backend/tests/ -v` (needs REACT_APP_BACKEND_URL exported). 45 tests should pass. Phase-2 file is /app/backend/tests/phase2_test.py. Subjects PUT bug was fixed in this iteration. Pending UI deep tests not done: actually creating a CBT exam through teacher UI dialog with dynamic question rows, Subjects add/edit dialog from school admin, /cbt/{examId} timer countdown + submit dialog (blocked by one-shot attempt rule on the seeded exam), Create-login button per student row.",
+  "rca_of_the_issue": "Subjects 500: PUT /api/subjects path performed `await db.class_subjects.insert_one(doc)` and immediately returned `{'class_subjects': doc}`. Motor mutates `doc` to inject `_id` (bson ObjectId), which FastAPI's jsonable_encoder cannot serialize → 500. Fix: pop `_id` from the dict before returning. Verified by re-running test_admin_can_upsert_and_delete_subjects (now passes)."
+}

@@ -10,6 +10,7 @@ const ROLE_DASH = {
   school_admin: "/dashboard/school",
   teacher: "/dashboard/teacher",
   parent: "/dashboard/parent",
+  student: "/dashboard/student",
 };
 
 export default function Navbar({ variant = "landing" }) {

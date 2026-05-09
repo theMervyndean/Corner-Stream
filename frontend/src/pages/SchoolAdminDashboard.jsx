@@ -14,7 +14,7 @@ import { api, formatApiError } from "@/lib/api";
 import { toast } from "sonner";
 import {
   Users, Receipt, FileBarChart, ShieldCheck, Upload, Plus, ArrowRight,
-  AlertTriangle, CreditCard,
+  AlertTriangle, CreditCard, KeyRound, Image as ImageIcon, BookOpen, Trash2,
 } from "lucide-react";
 
 const PRICING = {
@@ -41,16 +41,30 @@ export default function SchoolAdminDashboard() {
   const [bankDlg, setBankDlg] = useState(false);
   const [bankForm, setBankForm] = useState({ tier: "digital_reports", duration: "full_session", amount_ngn: 0, file_data_url: "", note: "" });
 
+  // Subjects state
+  const [classSubjects, setClassSubjects] = useState([]);
+  const [subjDlg, setSubjDlg] = useState(false);
+  const [subjForm, setSubjForm] = useState({ class_name: "", subjectsText: "" });
+
+  // Login provisioning
+  const [loginDlg, setLoginDlg] = useState(null); // student object
+  const [loginForm, setLoginForm] = useState({ email: "", password: "" });
+
+  // Passport upload
+  const [passportDlg, setPassportDlg] = useState(null); // student object
+
   const refresh = async () => {
     try {
-      const [sRes, stRes, rRes] = await Promise.all([
+      const [sRes, stRes, rRes, sjRes] = await Promise.all([
         api.get("/schools/me"),
         api.get("/students"),
         api.get("/payments/bank-receipts"),
+        api.get("/subjects"),
       ]);
       setSchool(sRes.data.school);
       setStudents(stRes.data.students || []);
       setReceipts(rRes.data.receipts || []);
+      setClassSubjects(sjRes.data.class_subjects || []);
     } catch (e) {
       toast.error(formatApiError(e.response?.data?.detail) || e.message);
     }
@@ -123,6 +137,56 @@ export default function SchoolAdminDashboard() {
     }
   };
 
+  // Subjects
+  const openNewSubjects = () => { setSubjForm({ class_name: "", subjectsText: "" }); setSubjDlg(true); };
+  const editSubjects = (cs) => { setSubjForm({ class_name: cs.class_name, subjectsText: cs.subjects.join("\n") }); setSubjDlg(true); };
+  const saveSubjects = async () => {
+    const list = subjForm.subjectsText.split("\n").map((s) => s.trim()).filter(Boolean);
+    if (!subjForm.class_name.trim() || list.length === 0) { toast.error("Class name and at least one subject required"); return; }
+    try {
+      await api.put("/subjects", { class_name: subjForm.class_name.trim(), subjects: list });
+      toast.success("Saved");
+      setSubjDlg(false);
+      refresh();
+    } catch (e) { toast.error(formatApiError(e.response?.data?.detail) || e.message); }
+  };
+  const deleteSubjects = async (className) => {
+    if (!window.confirm(`Remove subjects for ${className}?`)) return;
+    try { await api.delete(`/subjects/${encodeURIComponent(className)}`); refresh(); }
+    catch (e) { toast.error(formatApiError(e.response?.data?.detail) || e.message); }
+  };
+
+  // Login provisioning
+  const openLoginDlg = (st) => {
+    setLoginDlg(st);
+    const seed = st.name.toLowerCase().split(" ")[0].replace(/[^a-z]/g, "");
+    setLoginForm({ email: `${seed}@${school.name.toLowerCase().replace(/[^a-z]/g, "")}.school`, password: "Student@123" });
+  };
+  const submitLogin = async () => {
+    try {
+      await api.post(`/students/${loginDlg.id}/login`, loginForm);
+      toast.success(`Login created: ${loginForm.email}`);
+      setLoginDlg(null);
+      refresh();
+    } catch (e) { toast.error(formatApiError(e.response?.data?.detail) || e.message); }
+  };
+
+  // Passport
+  const onPassportFile = (st, e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async () => {
+      try {
+        await api.put(`/students/${st.id}/passport`, { passport_url: reader.result });
+        toast.success("Passport uploaded");
+        setPassportDlg(null);
+        refresh();
+      } catch (err) { toast.error(formatApiError(err.response?.data?.detail) || err.message); }
+    };
+    reader.readAsDataURL(file);
+  };
+
   const debtCount = useMemo(() => students.filter((s) => (s.balance_due || 0) > 0).length, [students]);
   const totalDebt = useMemo(() => students.reduce((a, s) => a + (s.balance_due || 0), 0), [students]);
 
@@ -173,9 +237,10 @@ export default function SchoolAdminDashboard() {
         </div>
 
         <Tabs value={tab} onValueChange={setTab} className="mt-10">
-          <TabsList className="grid grid-cols-4 w-full max-w-2xl">
+          <TabsList className="grid grid-cols-5 w-full max-w-3xl">
             <TabsTrigger value="overview" data-testid="tab-overview">Overview</TabsTrigger>
             <TabsTrigger value="students" data-testid="tab-students">Students</TabsTrigger>
+            <TabsTrigger value="subjects" data-testid="tab-subjects">Subjects</TabsTrigger>
             <TabsTrigger value="subscription" data-testid="tab-subscription">Subscription</TabsTrigger>
             <TabsTrigger value="receipts" data-testid="tab-receipts">Bank receipts</TabsTrigger>
           </TabsList>
@@ -216,32 +281,73 @@ export default function SchoolAdminDashboard() {
               <Table>
                 <TableHeader>
                   <TableRow className="cs-bg-navy hover:cs-bg-navy">
+                    <TableHead className="text-white">Photo</TableHead>
                     <TableHead className="text-white">Name</TableHead>
                     <TableHead className="text-white">Class</TableHead>
                     <TableHead className="text-white">Age</TableHead>
                     <TableHead className="text-white">Gender</TableHead>
-                    <TableHead className="text-white">Parent email</TableHead>
-                    <TableHead className="text-white">Balance (₦)</TableHead>
+                    <TableHead className="text-white">Parent</TableHead>
+                    <TableHead className="text-white">Balance</TableHead>
+                    <TableHead className="text-white">Login</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {students.map((s, i) => (
                     <TableRow key={s.id} className={i % 2 ? "bg-slate-50" : ""} data-testid={`student-row-${i}`}>
+                      <TableCell>
+                        <button onClick={() => setPassportDlg(s)} className="w-10 h-12 border rounded overflow-hidden bg-slate-100 hover:ring-2 hover:ring-[#0056B3]" data-testid={`passport-btn-${s.id}`}>
+                          {s.passport_url ? <img src={s.passport_url} alt="" className="w-full h-full object-cover" /> : <ImageIcon size={14} className="mx-auto text-slate-400" />}
+                        </button>
+                      </TableCell>
                       <TableCell className="font-medium">{s.name}</TableCell>
                       <TableCell>{s.class_name}</TableCell>
                       <TableCell>{s.age}</TableCell>
                       <TableCell>{s.gender}</TableCell>
-                      <TableCell className="text-slate-500">{s.parent_email || "—"}</TableCell>
+                      <TableCell className="text-xs text-slate-500">{s.parent_email || "—"}</TableCell>
                       <TableCell>
                         {s.balance_due > 0 ? <span className="text-red-600 font-semibold">₦{s.balance_due.toLocaleString()}</span> : <span className="cs-text-green">Clear</span>}
+                      </TableCell>
+                      <TableCell>
+                        {s.login_email ? (
+                          <Badge className="cs-bg-green text-white text-[10px]">{s.login_email}</Badge>
+                        ) : (
+                          <Button size="sm" variant="outline" onClick={() => openLoginDlg(s)} data-testid={`create-login-${s.id}`}><KeyRound size={12} className="mr-1" /> Create login</Button>
+                        )}
                       </TableCell>
                     </TableRow>
                   ))}
                   {!students.length && (
-                    <TableRow><TableCell colSpan={6} className="text-center text-slate-500 py-8">No students yet. Add one or upload an Excel file.</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={8} className="text-center text-slate-500 py-8">No students yet. Add one or upload an Excel file.</TableCell></TableRow>
                   )}
                 </TableBody>
               </Table>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="subjects" className="mt-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-display font-semibold cs-text-navy text-lg">Subjects per class</h3>
+              <Button onClick={openNewSubjects} className="cs-bg-green text-white hover:opacity-90 rounded-full" data-testid="add-subjects-btn"><Plus size={14} className="mr-1" /> Add class subjects</Button>
+            </div>
+            <div className="grid sm:grid-cols-2 gap-4">
+              {classSubjects.map((cs) => (
+                <div key={cs.class_name} className="cs-card p-5" data-testid={`subjects-${cs.class_name}`}>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="w-9 h-9 rounded-md cs-bg-blue text-white flex items-center justify-center"><BookOpen size={16} /></div>
+                      <div className="font-display font-bold cs-text-navy">{cs.class_name}</div>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button size="sm" variant="outline" onClick={() => editSubjects(cs)} data-testid={`edit-subjects-${cs.class_name}`}>Edit</Button>
+                      <Button size="sm" variant="destructive" onClick={() => deleteSubjects(cs.class_name)} data-testid={`del-subjects-${cs.class_name}`}><Trash2 size={12} /></Button>
+                    </div>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {cs.subjects.map((sub) => <Badge key={sub} variant="outline" className="text-xs">{sub}</Badge>)}
+                  </div>
+                </div>
+              ))}
+              {!classSubjects.length && <div className="cs-card p-8 col-span-full text-center text-slate-500">No subjects assigned yet. Click <strong>Add class subjects</strong> to get started.</div>}
             </div>
           </TabsContent>
 
@@ -368,6 +474,54 @@ export default function SchoolAdminDashboard() {
             <div><Label>Note (optional)</Label><Input value={bankForm.note} onChange={(e) => setBankForm({ ...bankForm, note: e.target.value })} data-testid="bank-note" /></div>
           </div>
           <DialogFooter><Button onClick={submitBank} className="cs-bg-green text-white hover:opacity-90" data-testid="bank-submit">Submit receipt</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
+      {/* Subjects dialog */}
+      <Dialog open={subjDlg} onOpenChange={setSubjDlg}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>{subjForm.class_name && classSubjects.find((c) => c.class_name === subjForm.class_name) ? "Edit class subjects" : "Add class subjects"}</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <div><Label>Class name (e.g., JSS 1)</Label><Input value={subjForm.class_name} onChange={(e) => setSubjForm({ ...subjForm, class_name: e.target.value })} data-testid="subj-class" /></div>
+            <div>
+              <Label>Subjects (one per line)</Label>
+              <textarea
+                rows={8}
+                value={subjForm.subjectsText}
+                onChange={(e) => setSubjForm({ ...subjForm, subjectsText: e.target.value })}
+                className="w-full rounded-md border border-slate-200 p-3 text-sm font-mono"
+                placeholder="Mathematics&#10;English Language&#10;Basic Science"
+                data-testid="subj-list"
+              />
+            </div>
+          </div>
+          <DialogFooter><Button onClick={saveSubjects} className="cs-bg-green text-white hover:opacity-90" data-testid="subj-save">Save</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Login provisioning dialog */}
+      <Dialog open={!!loginDlg} onOpenChange={(o) => !o && setLoginDlg(null)}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Create login for {loginDlg?.name}</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <div><Label>Email</Label><Input type="email" value={loginForm.email} onChange={(e) => setLoginForm({ ...loginForm, email: e.target.value })} data-testid="login-create-email" /></div>
+            <div><Label>Password</Label><Input value={loginForm.password} onChange={(e) => setLoginForm({ ...loginForm, password: e.target.value })} data-testid="login-create-pw" /></div>
+            <p className="text-xs text-slate-500">Share these credentials with the student. They can log in at the main page.</p>
+          </div>
+          <DialogFooter><Button onClick={submitLogin} className="cs-bg-green text-white hover:opacity-90" data-testid="login-create-submit">Create login</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Passport upload dialog */}
+      <Dialog open={!!passportDlg} onOpenChange={(o) => !o && setPassportDlg(null)}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Passport — {passportDlg?.name}</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <div className="aspect-[3/4] w-40 mx-auto border rounded overflow-hidden bg-slate-100 flex items-center justify-center">
+              {passportDlg?.passport_url ? <img src={passportDlg.passport_url} alt="" className="w-full h-full object-cover" /> : <div className="text-xs text-slate-400">NO PHOTO</div>}
+            </div>
+            <Label>Upload new passport</Label>
+            <Input type="file" accept="image/*" onChange={(e) => onPassportFile(passportDlg, e)} data-testid="passport-input" />
+          </div>
         </DialogContent>
       </Dialog>
     </div>
