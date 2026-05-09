@@ -87,6 +87,20 @@ async def create_checkout(payload: CheckoutInit, http_request: Request, user: di
     return {"url": session.url, "session_id": session.session_id, "amount_usd": amount_usd}
 
 
+def _retrieve_session_direct(session_id: str) -> dict:
+    """Retrieve checkout session via stripe SDK directly (bypasses buggy emergentintegrations metadata coercion)."""
+    import stripe
+    stripe.api_key = os.environ["STRIPE_API_KEY"]
+    session = stripe.checkout.Session.retrieve(session_id)
+    return {
+        "status": session.status,
+        "payment_status": session.payment_status,
+        "amount_total": session.amount_total,
+        "currency": session.currency,
+        "metadata": dict(session.metadata or {}),
+    }
+
+
 @router.get("/checkout/status/{session_id}")
 async def checkout_status(session_id: str, user: dict = Depends(get_current_user)):
     db = get_db()
@@ -94,19 +108,27 @@ async def checkout_status(session_id: str, user: dict = Depends(get_current_user
     if not txn:
         raise HTTPException(status_code=404, detail="Transaction not found")
 
-    api_key = os.environ["STRIPE_API_KEY"]
-    stripe_checkout = StripeCheckout(api_key=api_key, webhook_url="")
-    status = await stripe_checkout.get_checkout_status(session_id)
+    # Try stripe SDK directly (avoids emergentintegrations metadata pydantic bug)
+    try:
+        info = _retrieve_session_direct(session_id)
+        status_str = info["status"]
+        payment_status = info["payment_status"]
+        amount_total = info["amount_total"]
+        currency = info["currency"]
+    except Exception:
+        # Fallback to locally-stored values (kept fresh by /api/webhook/stripe)
+        status_str = txn.get("status", "open")
+        payment_status = txn.get("payment_status", "initiated")
+        amount_total = int(round((txn.get("amount") or 0) * 100))
+        currency = txn.get("currency", "usd")
 
-    update = {
-        "status": status.status,
-        "payment_status": status.payment_status,
-        "updated_at": now_iso(),
-    }
-    await db.payment_transactions.update_one({"session_id": session_id}, {"$set": update})
+    await db.payment_transactions.update_one(
+        {"session_id": session_id},
+        {"$set": {"status": status_str, "payment_status": payment_status, "updated_at": now_iso()}},
+    )
 
     # If paid AND not yet applied, activate subscription
-    if status.payment_status == "paid" and not txn.get("applied"):
+    if payment_status == "paid" and not txn.get("applied"):
         meta = txn.get("metadata", {})
         school_id = meta.get("school_id")
         tier = meta.get("tier")
@@ -123,10 +145,10 @@ async def checkout_status(session_id: str, user: dict = Depends(get_current_user
 
     return {
         "session_id": session_id,
-        "status": status.status,
-        "payment_status": status.payment_status,
-        "amount_total": status.amount_total,
-        "currency": status.currency,
+        "status": status_str,
+        "payment_status": payment_status,
+        "amount_total": amount_total,
+        "currency": currency,
     }
 
 
