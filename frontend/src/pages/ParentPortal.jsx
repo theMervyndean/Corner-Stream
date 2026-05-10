@@ -45,14 +45,23 @@ export default function ParentPortal() {
                   )}
                 </div>
 
-                <div className="mt-5 flex gap-3">
+                <div className="mt-5 flex flex-col gap-2">
                   <Button
                     onClick={() => navigate(`/report/${c.id}/1st%20Term`)}
                     disabled={debt}
-                    className={`flex-1 rounded-full ${debt ? "bg-slate-200 text-slate-500 cursor-not-allowed" : "cs-bg-green text-white hover:opacity-90"}`}
+                    className={`flex-1 rounded-full btn-anim ${debt ? "bg-slate-200 text-slate-500 cursor-not-allowed" : "cs-bg-green text-white hover:opacity-90"}`}
                     data-testid={`result-checker-${c.id}`}
                   >
-                    {debt ? <><Lock size={14} className="mr-2" /> Result locked</> : <><FileText size={14} className="mr-2" /> Result Checker</>}
+                    {debt ? <><Lock size={14} className="mr-2" /> Term result locked</> : <><FileText size={14} className="mr-2" /> Term result</>}
+                  </Button>
+                  <Button
+                    onClick={() => navigate(`/report/annual/${c.id}`)}
+                    disabled={debt}
+                    variant="outline"
+                    className={`flex-1 rounded-full btn-anim ${debt ? "opacity-50 cursor-not-allowed" : ""}`}
+                    data-testid={`annual-checker-${c.id}`}
+                  >
+                    {debt ? <><Lock size={14} className="mr-2" /> Annual locked</> : <><FileText size={14} className="mr-2" /> Annual session report</>}
                   </Button>
                 </div>
 

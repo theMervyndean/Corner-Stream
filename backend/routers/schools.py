@@ -13,6 +13,11 @@ class SchoolUpdate(BaseModel):
     principal_name: Optional[str] = None
     address: Optional[str] = None
     phone: Optional[str] = None
+    email: Optional[str] = None
+    motto: Optional[str] = None
+    logo_url: Optional[str] = None
+    founded_year: Optional[str] = None
+    website: Optional[str] = None
 
 
 @router.get("/me")

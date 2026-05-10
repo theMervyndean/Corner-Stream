@@ -153,6 +153,37 @@ h1, h2, h3, h4, h5, h6, .font-display {
   to { opacity: 1; transform: translateY(0); }
 }
 
+/* Scroll-reveal */
+[data-reveal] {
+  opacity: 0;
+  transform: translateY(28px);
+  transition: opacity 800ms cubic-bezier(.21,.6,.35,1), transform 800ms cubic-bezier(.21,.6,.35,1);
+  will-change: opacity, transform;
+}
+[data-reveal].revealed {
+  opacity: 1;
+  transform: translateY(0);
+}
+[data-reveal][data-reveal-delay="1"].revealed { transition-delay: 80ms; }
+[data-reveal][data-reveal-delay="2"].revealed { transition-delay: 160ms; }
+[data-reveal][data-reveal-delay="3"].revealed { transition-delay: 240ms; }
+[data-reveal][data-reveal-delay="4"].revealed { transition-delay: 320ms; }
+[data-reveal][data-reveal-delay="5"].revealed { transition-delay: 400ms; }
+
+/* Button micro-interactions */
+.btn-anim {
+  transition: transform 200ms cubic-bezier(.21,.6,.35,1), box-shadow 250ms ease, opacity 200ms;
+  will-change: transform;
+}
+.btn-anim:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 22px rgba(0, 33, 71, 0.14);
+}
+.btn-anim:active {
+  transform: translateY(0) scale(0.97);
+  box-shadow: 0 4px 8px rgba(0, 33, 71, 0.10);
+}
+
 /* Subtle grid background for hero */
 .grid-bg {
   background-image:

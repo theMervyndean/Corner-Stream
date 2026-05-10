@@ -131,13 +131,23 @@ export default function StudentDashboard() {
               <Lock size={14} className="mr-2" /> Locked — clear fees
             </Button>
           ) : (
-            <Button
-              onClick={() => navigate(`/report/${me.id}/1st%20Term`)}
-              className="cs-bg-navy text-white hover:opacity-90 rounded-full"
-              data-testid="student-result-checker"
-            >
-              <CheckCircle2 size={14} className="mr-2" /> Result Checker
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                onClick={() => navigate(`/report/${me.id}/1st%20Term`)}
+                className="cs-bg-navy text-white hover:opacity-90 rounded-full btn-anim"
+                data-testid="student-result-checker"
+              >
+                <CheckCircle2 size={14} className="mr-2" /> Term report
+              </Button>
+              <Button
+                onClick={() => navigate(`/report/annual/${me.id}`)}
+                variant="outline"
+                className="rounded-full btn-anim"
+                data-testid="student-annual-checker"
+              >
+                <CheckCircle2 size={14} className="mr-2" /> Annual session
+              </Button>
+            </div>
           )}
         </div>
       </div>

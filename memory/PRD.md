@@ -53,6 +53,17 @@ Brand: Deep Navy #002147, Vibrant Green #28A745, Electric Blue #0056B3. Visuals 
 - ⏭️ **Deferred**: offline CBT cache (per your choice — PWA shell only).
 - ⏭️ **Deferred**: live email out for Contact Us (per your choice — DB-only).
 
+## Phase-3 implemented (Feb 2026 — addresses user pushback)
+- ✅ **Public registration is school-admin only** — teachers/parents/students can no longer self-register; schools build their own personnel from inside the dashboard.
+- ✅ **Setup checklist** on the school admin Overview tab — visual progress bar with 7 actionable steps so a fresh school can immediately test every flow.
+- ✅ **School Profile builder tab** — logo upload, motto, address, phone, email, founded year, website. Renders on report cards.
+- ✅ **Users tab** — school admin creates/deletes teacher and parent logins (`POST /api/users`, `DELETE /api/users/{id}`).
+- ✅ **Eye/EyeOff password toggle** on every password input (PasswordInput component).
+- ✅ **Scroll-reveal animations** on landing page (Intersection Observer + CSS) + button micro-interactions (`.btn-anim` lift on hover, scale on press).
+- ✅ **Subdomain routing** for `admin.cornerstreams.com` — host check forces super-admin entry; `/admin` route as fallback (`/login?admin=1`).
+- ✅ **Annual cumulative report** — `GET /api/reports/annual/{student_id}?year=2025/2026` returns 3-term subject matrix, session average, promotion status (Promoted to next class / Repeat current class), aggregated skill ratings, QR. Frontend route: `/report/annual/:studentId`. Buttons added to Parent Portal + Student Dashboard.
+- ✅ All 45/45 tests still passing (phase-1 register-parent test updated to assert new 422 behavior).
+
 ## Demo accounts (seeded)
 | Role | Email | Password |
 |---|---|---|

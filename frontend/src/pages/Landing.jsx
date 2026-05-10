@@ -41,6 +41,7 @@ const FEATURES = [
 export default function Landing() {
   const navigate = useNavigate();
   const [duration, setDuration] = useState("full_session");
+  useReveal();
 
   const tiers = useMemo(
     () => Object.entries(PRICING).map(([key, t]) => {
@@ -87,7 +88,7 @@ export default function Landing() {
             <div className="mt-8 flex flex-wrap gap-3">
               <Button
                 size="lg"
-                className="cs-bg-green text-white hover:opacity-90 rounded-full px-7 h-12 text-base"
+                className="cs-bg-green text-white hover:opacity-90 rounded-full px-7 h-12 text-base btn-anim"
                 onClick={() => navigate("/register")}
                 data-testid="hero-cta-primary"
               >
@@ -96,7 +97,7 @@ export default function Landing() {
               <Button
                 size="lg"
                 variant="outline"
-                className="rounded-full border-2 cs-border-navy cs-text-navy hover:bg-slate-50 px-7 h-12 text-base"
+                className="rounded-full border-2 cs-border-navy cs-text-navy hover:bg-slate-50 px-7 h-12 text-base btn-anim"
                 onClick={() => document.getElementById("pricing")?.scrollIntoView({ behavior: "smooth" })}
                 data-testid="hero-cta-pricing"
               >
@@ -138,7 +139,7 @@ export default function Landing() {
             {FEATURES.map((f, i) => {
               const Icon = f.icon;
               return (
-                <div key={i} className="cs-card p-7" data-testid={`feature-card-${i}`}>
+                <div key={i} className="cs-card p-7" data-reveal data-reveal-delay={String((i % 3) + 1)} data-testid={`feature-card-${i}`}>
                   <div className="w-11 h-11 rounded-lg cs-bg-navy text-white flex items-center justify-center">
                     <Icon size={20} />
                   </div>
@@ -177,7 +178,7 @@ export default function Landing() {
           </div>
 
           <div className="mt-14 grid md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {tiers.map((t) => {
+            {tiers.map((t, idx) => {
               const Icon = t.icon;
               const featured = t.key === "unified_enterprise";
               const available = t.price !== undefined;
@@ -185,6 +186,8 @@ export default function Landing() {
                 <div
                   key={t.key}
                   className={`cs-card p-7 flex flex-col ${featured ? "tier-featured" : ""}`}
+                  data-reveal
+                  data-reveal-delay={String((idx % 4) + 1)}
                   data-testid={`pricing-card-${t.key}`}
                 >
                   <div className="w-11 h-11 rounded-lg cs-bg-blue text-white flex items-center justify-center">
@@ -207,7 +210,7 @@ export default function Landing() {
                     )}
                   </div>
                   <Button
-                    className={`mt-6 rounded-full ${featured ? "cs-bg-green hover:opacity-90 text-white" : "cs-bg-navy hover:opacity-90 text-white"}`}
+                    className={`mt-6 rounded-full btn-anim ${featured ? "cs-bg-green hover:opacity-90 text-white" : "cs-bg-navy hover:opacity-90 text-white"}`}
                     disabled={!available}
                     onClick={() => navigate(`/register?tier=${t.key}&duration=${duration}`)}
                     data-testid={`pricing-cta-${t.key}`}
@@ -223,7 +226,7 @@ export default function Landing() {
 
       {/* TESTIMONIALS / SHOWCASE */}
       <section className="py-24 bg-white">
-        <div className="max-w-7xl mx-auto px-6 grid md:grid-cols-3 gap-6">
+        <div className="max-w-7xl mx-auto px-6 grid md:grid-cols-3 gap-6" data-reveal>
           <div className="cs-card overflow-hidden md:col-span-2 row-span-2">
             <img src={TEACHER_IMG} alt="Teacher" className="w-full h-72 object-cover" />
             <div className="p-8">

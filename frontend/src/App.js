@@ -9,6 +9,7 @@ import Login from "@/pages/Login.jsx";
 import Register from "@/pages/Register.jsx";
 import StudentDashboard from "@/pages/StudentDashboard.jsx";
 import CBTTake from "@/pages/CBTTake.jsx";
+import AnnualReport from "@/pages/AnnualReport.jsx";
 import SchoolAdminDashboard from "@/pages/SchoolAdminDashboard.jsx";
 import TeacherDashboard from "@/pages/TeacherDashboard.jsx";
 import ParentPortal from "@/pages/ParentPortal.jsx";
@@ -20,7 +21,16 @@ import "@/App.css";
 
 function HomeRoute() {
   const { user } = useAuth();
+  const host = typeof window !== "undefined" ? window.location.hostname : "";
+  const isAdminSubdomain = host.startsWith("admin.");
+
   if (user === null) return <div className="h-screen flex items-center justify-center text-slate-500">Loading…</div>;
+
+  if (isAdminSubdomain) {
+    if (user && user.role === "super_admin") return <Navigate to="/dashboard/super" replace />;
+    return <Navigate to="/login?admin=1" replace />;
+  }
+
   if (user && user.role === "super_admin") return <Navigate to="/dashboard/super" replace />;
   if (user && user.role === "school_admin") return <Navigate to="/dashboard/school" replace />;
   if (user && user.role === "teacher") return <Navigate to="/dashboard/teacher" replace />;
@@ -45,6 +55,8 @@ export default function App() {
           <Route path="/dashboard/super" element={<ProtectedRoute roles={["super_admin"]}><SuperAdmin /></ProtectedRoute>} />
           <Route path="/cbt/:examId" element={<ProtectedRoute roles={["student"]}><CBTTake /></ProtectedRoute>} />
           <Route path="/report/:studentId/:term" element={<ProtectedRoute><ReportCard /></ProtectedRoute>} />
+          <Route path="/report/annual/:studentId" element={<ProtectedRoute><AnnualReport /></ProtectedRoute>} />
+          <Route path="/admin" element={<Navigate to="/login?admin=1" replace />} />
           <Route path="/checkout/return" element={<ProtectedRoute><CheckoutReturn /></ProtectedRoute>} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

@@ -85,13 +85,15 @@ class TestAuth:
         assert r.json()["user"]["school_id"]
 
     def test_register_parent_existing_school(self):
+        # Phase-3: public register no longer accepts teacher/parent roles.
+        # Parents are provisioned by school admin via /api/users.
         email = f"TEST_parent_{int(time.time())}@example.com"
         r = requests.post(f"{API}/auth/register", json={
             "email": email, "password": "Test@1234", "name": "Test Parent",
             "role": "parent", "school_id": DEMO_SCHOOL_ID,
         }, timeout=20)
-        assert r.status_code == 200, r.text
-        assert r.json()["user"]["school_id"] == DEMO_SCHOOL_ID
+        # Should fail because public register requires school_name (school_admin only)
+        assert r.status_code == 422, r.text
 
 
 # ---------- Schools / Students ----------

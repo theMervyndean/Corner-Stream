@@ -4,6 +4,7 @@ import Navbar from "@/components/Navbar.jsx";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import PasswordInput from "@/components/PasswordInput.jsx";
 import { useAuth } from "@/lib/auth.jsx";
 import { toast } from "sonner";
 
@@ -51,9 +52,9 @@ export default function Login() {
             </div>
             <div>
               <Label htmlFor="password">Password</Label>
-              <Input id="password" type="password" required value={password} onChange={(e) => setPassword(e.target.value)} data-testid="login-password" />
+              <PasswordInput id="password" required value={password} onChange={(e) => setPassword(e.target.value)} data-testid="login-password" />
             </div>
-            <Button type="submit" disabled={submitting} className="cs-bg-navy hover:opacity-90 text-white w-full rounded-full h-11" data-testid="login-submit">
+            <Button type="submit" disabled={submitting} className="cs-bg-navy hover:opacity-90 text-white w-full rounded-full h-11 btn-anim" data-testid="login-submit">
               {submitting ? "Signing in…" : "Sign in"}
             </Button>
           </form>

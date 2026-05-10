@@ -15,6 +15,7 @@ import { toast } from "sonner";
 import {
   Users, Receipt, FileBarChart, ShieldCheck, Upload, Plus, ArrowRight,
   AlertTriangle, CreditCard, KeyRound, Image as ImageIcon, BookOpen, Trash2,
+  CheckCircle2, Circle,
 } from "lucide-react";
 
 const PRICING = {
@@ -50,26 +51,76 @@ export default function SchoolAdminDashboard() {
   const [loginDlg, setLoginDlg] = useState(null); // student object
   const [loginForm, setLoginForm] = useState({ email: "", password: "" });
 
+  // Profile
+  const [profileForm, setProfileForm] = useState({ name: "", principal_name: "", address: "", phone: "", email: "", motto: "", logo_url: "", founded_year: "", website: "" });
+
+  // Users (teachers / parents)
+  const [usersList, setUsersList] = useState([]);
+  const [userDlg, setUserDlg] = useState(false);
+  const [newUser, setNewUser] = useState({ name: "", email: "", password: "", role: "teacher", assigned_class: "" });
+
   // Passport upload
-  const [passportDlg, setPassportDlg] = useState(null); // student object
+  const [passportDlg, setPassportDlg] = useState(null);
 
   const refresh = async () => {
     try {
-      const [sRes, stRes, rRes, sjRes] = await Promise.all([
+      const [sRes, stRes, rRes, sjRes, uRes] = await Promise.all([
         api.get("/schools/me"),
         api.get("/students"),
         api.get("/payments/bank-receipts"),
         api.get("/subjects"),
+        api.get("/users"),
       ]);
       setSchool(sRes.data.school);
       setStudents(stRes.data.students || []);
       setReceipts(rRes.data.receipts || []);
       setClassSubjects(sjRes.data.class_subjects || []);
+      setUsersList(uRes.data.users || []);
+      // Sync profile form
+      const s = sRes.data.school;
+      setProfileForm({
+        name: s.name || "", principal_name: s.principal_name || "", address: s.address || "",
+        phone: s.phone || "", email: s.email || "", motto: s.motto || "",
+        logo_url: s.logo_url || "", founded_year: s.founded_year || "", website: s.website || "",
+      });
     } catch (e) {
       toast.error(formatApiError(e.response?.data?.detail) || e.message);
     }
   };
   useEffect(() => { refresh(); }, []);
+
+  // Profile save
+  const saveProfile = async () => {
+    try {
+      await api.put("/schools/me", profileForm);
+      toast.success("School profile updated");
+      refresh();
+    } catch (e) { toast.error(formatApiError(e.response?.data?.detail) || e.message); }
+  };
+  const onLogoFile = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => setProfileForm((p) => ({ ...p, logo_url: reader.result }));
+    reader.readAsDataURL(file);
+  };
+
+  // Users management
+  const submitNewUser = async () => {
+    if (!newUser.name || !newUser.email || !newUser.password) { toast.error("Name, email and password are required"); return; }
+    try {
+      await api.post("/users", newUser);
+      toast.success(`${newUser.role === "teacher" ? "Teacher" : "Parent"} created — share credentials with them`);
+      setUserDlg(false);
+      setNewUser({ name: "", email: "", password: "", role: newUser.role, assigned_class: "" });
+      refresh();
+    } catch (e) { toast.error(formatApiError(e.response?.data?.detail) || e.message); }
+  };
+  const removeUser = async (uid) => {
+    if (!window.confirm("Delete this user account?")) return;
+    try { await api.delete(`/users/${uid}`); refresh(); }
+    catch (e) { toast.error(formatApiError(e.response?.data?.detail) || e.message); }
+  };
 
   // Auto-prefill if coming from pricing page
   useEffect(() => {
@@ -237,25 +288,62 @@ export default function SchoolAdminDashboard() {
         </div>
 
         <Tabs value={tab} onValueChange={setTab} className="mt-10">
-          <TabsList className="grid grid-cols-5 w-full max-w-3xl">
+          <TabsList className="grid grid-cols-7 w-full max-w-4xl">
             <TabsTrigger value="overview" data-testid="tab-overview">Overview</TabsTrigger>
+            <TabsTrigger value="profile" data-testid="tab-profile">Profile</TabsTrigger>
+            <TabsTrigger value="users" data-testid="tab-users">Users</TabsTrigger>
             <TabsTrigger value="students" data-testid="tab-students">Students</TabsTrigger>
             <TabsTrigger value="subjects" data-testid="tab-subjects">Subjects</TabsTrigger>
             <TabsTrigger value="subscription" data-testid="tab-subscription">Subscription</TabsTrigger>
-            <TabsTrigger value="receipts" data-testid="tab-receipts">Bank receipts</TabsTrigger>
+            <TabsTrigger value="receipts" data-testid="tab-receipts">Receipts</TabsTrigger>
           </TabsList>
 
           <TabsContent value="overview" className="mt-6 grid md:grid-cols-2 gap-6">
+            {/* Setup checklist */}
+            <div className="cs-card p-6 md:col-span-2">
+              <h3 className="font-display font-semibold cs-text-navy text-lg">Setup checklist</h3>
+              <p className="text-sm text-slate-500 mt-1">Complete these to start using Corner Streams end-to-end.</p>
+              {(() => {
+                const steps = [
+                  { done: !!(school.address && school.phone && school.motto), label: "Build your school profile (address, motto, logo, contact)", action: () => setTab("profile") },
+                  { done: classSubjects.length > 0, label: "Set subjects for each class", action: () => setTab("subjects") },
+                  { done: usersList.some((u) => u.role === "teacher"), label: "Add at least one teacher", action: () => { setNewUser({ ...newUser, role: "teacher" }); setUserDlg(true); } },
+                  { done: usersList.some((u) => u.role === "parent"), label: "Add at least one parent", action: () => { setNewUser({ ...newUser, role: "parent" }); setUserDlg(true); } },
+                  { done: students.length > 0, label: "Add students (manually or upload Excel)", action: () => setTab("students") },
+                  { done: usersList.some((u) => u.role === "student"), label: "Provision at least one student login (from the Students tab)", action: () => setTab("students") },
+                  { done: !!school.subscription_tier, label: "Choose a subscription plan", action: () => setTab("subscription") },
+                ];
+                const completed = steps.filter((s) => s.done).length;
+                return (
+                  <>
+                    <div className="mt-3 h-2 bg-slate-100 rounded-full overflow-hidden">
+                      <div className="h-2 cs-bg-green transition-all" style={{ width: `${(completed / steps.length) * 100}%` }} />
+                    </div>
+                    <div className="text-xs text-slate-500 mt-2">{completed} of {steps.length} steps complete</div>
+                    <ul className="mt-4 space-y-2">
+                      {steps.map((s, i) => (
+                        <li key={i} className="flex items-center gap-3 p-3 rounded-lg border" data-testid={`setup-step-${i}`}>
+                          {s.done ? <CheckCircle2 size={18} className="cs-text-green flex-shrink-0" /> : <Circle size={18} className="text-slate-300 flex-shrink-0" />}
+                          <span className={`text-sm flex-1 ${s.done ? "text-slate-400 line-through" : "cs-text-navy"}`}>{s.label}</span>
+                          {!s.done && <Button size="sm" variant="outline" onClick={s.action} className="btn-anim" data-testid={`setup-step-cta-${i}`}>Go</Button>}
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                );
+              })()}
+            </div>
+
             <div className="cs-card p-6">
               <h3 className="font-display font-semibold cs-text-navy text-lg">Quick actions</h3>
               <div className="mt-4 grid grid-cols-2 gap-3">
-                <Button onClick={() => setStudentDlg(true)} className="cs-bg-navy hover:opacity-90 text-white" data-testid="quick-add-student"><Plus size={16} className="mr-1" /> Add student</Button>
+                <Button onClick={() => setStudentDlg(true)} className="cs-bg-navy hover:opacity-90 text-white btn-anim" data-testid="quick-add-student"><Plus size={16} className="mr-1" /> Add student</Button>
                 <label className="cursor-pointer">
                   <input type="file" accept=".xlsx" className="hidden" onChange={onUpload} data-testid="quick-bulk-upload" />
-                  <span className="inline-flex items-center justify-center w-full h-9 rounded-md cs-bg-blue text-white text-sm font-medium hover:opacity-90"><Upload size={16} className="mr-1" /> Bulk upload .xlsx</span>
+                  <span className="inline-flex items-center justify-center w-full h-9 rounded-md cs-bg-blue text-white text-sm font-medium hover:opacity-90 btn-anim"><Upload size={16} className="mr-1" /> Bulk upload .xlsx</span>
                 </label>
-                <Button variant="outline" onClick={() => setTab("subscription")} data-testid="quick-pay"><CreditCard size={16} className="mr-1" /> Pay subscription</Button>
-                <Button variant="outline" onClick={() => setTab("receipts")} data-testid="quick-receipts"><Receipt size={16} className="mr-1" /> Bank receipts</Button>
+                <Button variant="outline" onClick={() => setTab("subscription")} className="btn-anim" data-testid="quick-pay"><CreditCard size={16} className="mr-1" /> Pay subscription</Button>
+                <Button variant="outline" onClick={() => setTab("users")} className="btn-anim" data-testid="quick-users"><Users size={16} className="mr-1" /> Manage users</Button>
               </div>
             </div>
             <div className="cs-card p-6">
@@ -263,6 +351,76 @@ export default function SchoolAdminDashboard() {
               <p className="text-sm text-slate-500 mt-2">Required columns (row 1):</p>
               <code className="block mt-2 text-xs bg-slate-50 rounded p-3 border">name | age | gender | class_name | parent_email (optional) | balance_due (optional)</code>
               <p className="text-xs text-slate-500 mt-3">parent_email links a student to a Parent Portal user. balance_due triggers Debt Lock.</p>
+            </div>
+          </TabsContent>
+
+          {/* PROFILE TAB */}
+          <TabsContent value="profile" className="mt-6">
+            <div className="cs-card p-6">
+              <h3 className="font-display font-semibold cs-text-navy text-lg">School profile</h3>
+              <p className="text-sm text-slate-500 mt-1">This information appears on report cards, the parent portal, and printed PDFs.</p>
+              <div className="mt-6 grid md:grid-cols-[180px_1fr] gap-6">
+                <div>
+                  <div className="aspect-square border rounded-lg overflow-hidden bg-slate-50 flex items-center justify-center">
+                    {profileForm.logo_url ? <img src={profileForm.logo_url} alt="logo" className="w-full h-full object-contain" /> : <ImageIcon size={32} className="text-slate-300" />}
+                  </div>
+                  <Label className="mt-3 block">School logo</Label>
+                  <Input type="file" accept="image/*" onChange={onLogoFile} data-testid="profile-logo-input" />
+                </div>
+                <div className="grid sm:grid-cols-2 gap-4">
+                  <div className="sm:col-span-2"><Label>School name</Label><Input value={profileForm.name} onChange={(e) => setProfileForm({ ...profileForm, name: e.target.value })} data-testid="profile-name" /></div>
+                  <div><Label>Principal name</Label><Input value={profileForm.principal_name} onChange={(e) => setProfileForm({ ...profileForm, principal_name: e.target.value })} data-testid="profile-principal" /></div>
+                  <div><Label>Founded year</Label><Input value={profileForm.founded_year} onChange={(e) => setProfileForm({ ...profileForm, founded_year: e.target.value })} data-testid="profile-founded" /></div>
+                  <div className="sm:col-span-2"><Label>Motto</Label><Input value={profileForm.motto} onChange={(e) => setProfileForm({ ...profileForm, motto: e.target.value })} placeholder="Knowledge. Discipline. Excellence." data-testid="profile-motto" /></div>
+                  <div className="sm:col-span-2"><Label>Address</Label><Input value={profileForm.address} onChange={(e) => setProfileForm({ ...profileForm, address: e.target.value })} data-testid="profile-address" /></div>
+                  <div><Label>Phone</Label><Input value={profileForm.phone} onChange={(e) => setProfileForm({ ...profileForm, phone: e.target.value })} data-testid="profile-phone" /></div>
+                  <div><Label>School email</Label><Input type="email" value={profileForm.email} onChange={(e) => setProfileForm({ ...profileForm, email: e.target.value })} data-testid="profile-email" /></div>
+                  <div className="sm:col-span-2"><Label>Website</Label><Input value={profileForm.website} onChange={(e) => setProfileForm({ ...profileForm, website: e.target.value })} placeholder="https://..." data-testid="profile-website" /></div>
+                </div>
+              </div>
+              <div className="mt-6 flex justify-end">
+                <Button onClick={saveProfile} className="cs-bg-green text-white hover:opacity-90 rounded-full btn-anim" data-testid="profile-save">Save profile</Button>
+              </div>
+            </div>
+          </TabsContent>
+
+          {/* USERS TAB */}
+          <TabsContent value="users" className="mt-6">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="font-display font-semibold cs-text-navy text-lg">Teachers & parents</h3>
+                <p className="text-xs text-slate-500">Create login credentials for staff and parents. Student logins are created from the Students tab.</p>
+              </div>
+              <Button onClick={() => { setNewUser({ name: "", email: "", password: "", role: "teacher", assigned_class: "" }); setUserDlg(true); }} className="cs-bg-green text-white hover:opacity-90 rounded-full btn-anim" data-testid="add-user-btn"><Plus size={14} className="mr-1" /> Add user</Button>
+            </div>
+            <div className="cs-card overflow-hidden">
+              <Table>
+                <TableHeader>
+                  <TableRow className="cs-bg-navy hover:cs-bg-navy">
+                    <TableHead className="text-white">Name</TableHead>
+                    <TableHead className="text-white">Email</TableHead>
+                    <TableHead className="text-white">Role</TableHead>
+                    <TableHead className="text-white">Class</TableHead>
+                    <TableHead className="text-white">Created</TableHead>
+                    <TableHead className="text-white">Action</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {usersList.filter((u) => u.role !== "school_admin" && u.role !== "super_admin").map((u, i) => (
+                    <TableRow key={u.id} className={i % 2 ? "bg-slate-50" : ""} data-testid={`user-row-${u.id}`}>
+                      <TableCell className="font-medium">{u.name}</TableCell>
+                      <TableCell className="text-xs">{u.email}</TableCell>
+                      <TableCell><Badge className={u.role === "teacher" ? "cs-bg-blue text-white" : u.role === "parent" ? "bg-amber-500 text-white" : "cs-bg-green text-white"}>{u.role}</Badge></TableCell>
+                      <TableCell>{u.assigned_class || "—"}</TableCell>
+                      <TableCell className="text-xs text-slate-500">{u.created_at ? new Date(u.created_at).toLocaleDateString() : "—"}</TableCell>
+                      <TableCell><Button size="sm" variant="destructive" onClick={() => removeUser(u.id)} data-testid={`user-del-${u.id}`}><Trash2 size={12} /></Button></TableCell>
+                    </TableRow>
+                  ))}
+                  {!usersList.filter((u) => u.role !== "school_admin" && u.role !== "super_admin").length && (
+                    <TableRow><TableCell colSpan={6} className="text-center text-slate-500 py-8">No teachers or parents yet. Click <strong>Add user</strong> to create one.</TableCell></TableRow>
+                  )}
+                </TableBody>
+              </Table>
             </div>
           </TabsContent>
 
@@ -524,6 +682,33 @@ export default function SchoolAdminDashboard() {
           </div>
         </DialogContent>
       </Dialog>
+      {/* New user (teacher / parent) dialog */}
+      <Dialog open={userDlg} onOpenChange={setUserDlg}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Add user</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label>Role</Label>
+              <Select value={newUser.role} onValueChange={(v) => setNewUser({ ...newUser, role: v })}>
+                <SelectTrigger data-testid="nu-role"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="teacher">Teacher</SelectItem>
+                  <SelectItem value="parent">Parent</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div><Label>Full name</Label><Input value={newUser.name} onChange={(e) => setNewUser({ ...newUser, name: e.target.value })} data-testid="nu-name" /></div>
+            <div><Label>Email</Label><Input type="email" value={newUser.email} onChange={(e) => setNewUser({ ...newUser, email: e.target.value })} data-testid="nu-email" /></div>
+            <div><Label>Password</Label><Input value={newUser.password} onChange={(e) => setNewUser({ ...newUser, password: e.target.value })} data-testid="nu-password" /></div>
+            {newUser.role === "teacher" && (
+              <div><Label>Assigned class (optional)</Label><Input placeholder="e.g., JSS 1" value={newUser.assigned_class} onChange={(e) => setNewUser({ ...newUser, assigned_class: e.target.value })} data-testid="nu-class" /></div>
+            )}
+            <p className="text-xs text-slate-500">Share these credentials with the user. They sign in at the main login page.</p>
+          </div>
+          <DialogFooter><Button onClick={submitNewUser} className="cs-bg-green text-white hover:opacity-90 btn-anim" data-testid="nu-submit">Create user</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
+
     </div>
   );
 }

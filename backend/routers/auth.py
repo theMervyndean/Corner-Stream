@@ -12,9 +12,10 @@ class RegisterIn(BaseModel):
     email: EmailStr
     password: str = Field(min_length=6)
     name: str
-    role: str = Field(pattern="^(school_admin|teacher|parent)$")
-    school_name: Optional[str] = None  # required if school_admin
-    school_id: Optional[str] = None  # required if teacher/parent
+    school_name: str  # always required — public register is school admin only
+    principal_name: Optional[str] = None
+    school_phone: Optional[str] = None
+    school_address: Optional[str] = None
 
 
 class LoginIn(BaseModel):
@@ -34,47 +35,42 @@ def _user_public(u: dict) -> dict:
 
 @router.post("/register")
 async def register(payload: RegisterIn, response: Response):
+    """Public registration creates a school + its first school_admin user.
+    Teachers, parents and students are provisioned by the school admin from inside the dashboard."""
     db = get_db()
     email = payload.email.lower().strip()
     if await db.users.find_one({"email": email}):
         raise HTTPException(status_code=400, detail="Email already registered")
 
-    school_id = payload.school_id
-    if payload.role == "school_admin":
-        if not payload.school_name:
-            raise HTTPException(status_code=400, detail="school_name is required for school admin")
-        school_id = new_id()
-        await db.schools.insert_one({
-            "id": school_id,
-            "name": payload.school_name,
-            "principal_name": payload.name,
-            "address": "",
-            "phone": "",
-            "kill_switch": False,
-            "subscription_tier": None,
-            "subscription_duration": None,
-            "subscription_expires_at": None,
-            "created_at": now_iso(),
-        })
-    else:
-        if not school_id:
-            raise HTTPException(status_code=400, detail="school_id is required")
-        if not await db.schools.find_one({"id": school_id}):
-            raise HTTPException(status_code=400, detail="School not found")
+    school_id = new_id()
+    await db.schools.insert_one({
+        "id": school_id,
+        "name": payload.school_name,
+        "principal_name": payload.principal_name or payload.name,
+        "address": payload.school_address or "",
+        "phone": payload.school_phone or "",
+        "email": email,
+        "motto": "",
+        "logo_url": "",
+        "founded_year": "",
+        "website": "",
+        "kill_switch": False,
+        "subscription_tier": None,
+        "subscription_duration": None,
+        "subscription_expires_at": None,
+        "created_at": now_iso(),
+    })
 
     user_id = new_id()
     user_doc = {
-        "id": user_id,
-        "email": email,
+        "id": user_id, "email": email,
         "password_hash": hash_password(payload.password),
-        "name": payload.name,
-        "role": payload.role,
-        "school_id": school_id,
-        "created_at": now_iso(),
+        "name": payload.name, "role": "school_admin",
+        "school_id": school_id, "created_at": now_iso(),
     }
     await db.users.insert_one(user_doc)
 
-    token = create_access_token(user_id, email, payload.role)
+    token = create_access_token(user_id, email, "school_admin")
     set_auth_cookie(response, token)
     return {"user": _user_public(user_doc), "token": token}
 
