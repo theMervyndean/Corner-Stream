@@ -7,6 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { api, formatApiError } from "@/lib/api";
 import { toast } from "sonner";
+import useReveal from "@/lib/useReveal";
 import {
   GraduationCap, Receipt, ShieldCheck, FileBarChart, Users, QrCode,
   Mail, MessageCircle, Phone, ArrowRight, CheckCircle2, Sparkles, Lock,
