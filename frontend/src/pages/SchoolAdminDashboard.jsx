@@ -293,15 +293,17 @@ export default function SchoolAdminDashboard() {
         </div>
 
         <Tabs value={tab} onValueChange={setTab} className="mt-10">
-          <TabsList className="grid grid-cols-7 w-full max-w-4xl">
-            <TabsTrigger value="overview" data-testid="tab-overview">Overview</TabsTrigger>
-            <TabsTrigger value="profile" data-testid="tab-profile">Profile</TabsTrigger>
-            <TabsTrigger value="users" data-testid="tab-users">Users</TabsTrigger>
-            <TabsTrigger value="students" data-testid="tab-students">Students</TabsTrigger>
-            <TabsTrigger value="subjects" data-testid="tab-subjects">Subjects</TabsTrigger>
-            <TabsTrigger value="subscription" data-testid="tab-subscription">Subscription</TabsTrigger>
-            <TabsTrigger value="receipts" data-testid="tab-receipts">Receipts</TabsTrigger>
-          </TabsList>
+          <div className="overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0 scrollbar-hide">
+            <TabsList className="inline-flex w-max sm:grid sm:grid-cols-7 sm:w-full sm:max-w-4xl">
+              <TabsTrigger value="overview" data-testid="tab-overview">Overview</TabsTrigger>
+              <TabsTrigger value="profile" data-testid="tab-profile">Profile</TabsTrigger>
+              <TabsTrigger value="users" data-testid="tab-users">Users</TabsTrigger>
+              <TabsTrigger value="students" data-testid="tab-students">Students</TabsTrigger>
+              <TabsTrigger value="subjects" data-testid="tab-subjects">Subjects</TabsTrigger>
+              <TabsTrigger value="subscription" data-testid="tab-subscription">Subscription</TabsTrigger>
+              <TabsTrigger value="receipts" data-testid="tab-receipts">Receipts</TabsTrigger>
+            </TabsList>
+          </div>
 
           <TabsContent value="overview" className="mt-6 grid md:grid-cols-2 gap-6">
             {/* Setup checklist */}

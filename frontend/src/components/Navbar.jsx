@@ -21,10 +21,10 @@ export default function Navbar({ variant = "landing" }) {
 
   return (
     <header className={`w-full ${variant === "dashboard" ? "bg-white border-b border-[#E2E8F0]" : "bg-transparent"}`}>
-      <div className="max-w-7xl mx-auto flex items-center justify-between px-6 py-4">
-        <Link to="/" data-testid="nav-home-link" className="flex items-center gap-2">
+      <div className="max-w-7xl mx-auto flex items-center justify-between px-4 sm:px-6 py-4 gap-2">
+        <Link to="/" data-testid="nav-home-link" className="flex items-center gap-2 min-w-0">
           <Logo />
-          <span className="text-[10px] font-bold tracking-wider px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300" data-testid="nav-beta-badge">BETA</span>
+          <span className="hidden sm:inline text-[10px] font-bold tracking-wider px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300 shrink-0" data-testid="nav-beta-badge">BETA</span>
         </Link>
         <nav className="hidden md:flex items-center gap-7 text-sm font-medium cs-text-navy">
           {variant === "landing" && (
@@ -35,13 +35,14 @@ export default function Navbar({ variant = "landing" }) {
             </>
           )}
         </nav>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-1 sm:gap-3 shrink-0">
           {!isAuth ? (
             <>
-              <Button variant="ghost" onClick={() => navigate("/login")} data-testid="nav-login-btn">Sign in</Button>
+              <Button variant="ghost" size="sm" className="px-2 sm:px-4" onClick={() => navigate("/login")} data-testid="nav-login-btn">Sign in</Button>
               <Button
+                size="sm"
                 onClick={() => navigate("/register")}
-                className="cs-bg-green hover:opacity-90 text-white rounded-full px-5"
+                className="cs-bg-green hover:opacity-90 text-white rounded-full px-3 sm:px-5"
                 data-testid="nav-register-btn"
               >
                 Get started
@@ -51,7 +52,8 @@ export default function Navbar({ variant = "landing" }) {
             <>
               <Button
                 variant="outline"
-                className="rounded-full"
+                size="sm"
+                className="rounded-full px-3 sm:px-4"
                 onClick={() => navigate(ROLE_DASH[user.role] || "/")}
                 data-testid="nav-dashboard-btn"
               >
@@ -59,10 +61,12 @@ export default function Navbar({ variant = "landing" }) {
               </Button>
               <Button
                 variant="ghost"
+                size="sm"
+                className="px-2 sm:px-4"
                 onClick={async () => { await logout(); navigate("/"); }}
                 data-testid="nav-logout-btn"
               >
-                <LogOut size={16} className="mr-1" /> Sign out
+                <LogOut size={16} className="sm:mr-1" /> <span className="hidden sm:inline">Sign out</span>
               </Button>
             </>
           )}

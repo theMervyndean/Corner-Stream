@@ -76,7 +76,7 @@ export default function Landing() {
       {/* HERO */}
       <section className="relative">
         <div className="grid-bg absolute inset-0 -z-10" />
-        <div className="max-w-7xl mx-auto px-6 pt-10 pb-24 grid md:grid-cols-2 gap-10 items-center">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 pt-10 pb-24 grid md:grid-cols-2 gap-10 items-center">
           <div className="fade-up">
             <span className="eyebrow" data-testid="hero-eyebrow">EDUCATION SAAS · NIGERIA</span>
             <h1 className="font-display text-4xl sm:text-5xl lg:text-6xl tracking-tight font-extrabold cs-text-navy mt-3 leading-[1.05]">
@@ -86,10 +86,10 @@ export default function Landing() {
               Corner Streams is the cloud spine for Nigerian schools — bulk student onboarding, automated CA + Exam reports,
               QR-verified PDFs, and a financial ledger that actually balances. Built for principals, teachers, and parents.
             </p>
-            <div className="mt-8 flex flex-wrap gap-3">
+            <div className="mt-8 flex flex-col sm:flex-row flex-wrap gap-3">
               <Button
                 size="lg"
-                className="cs-bg-green text-white hover:opacity-90 rounded-full px-7 h-12 text-base btn-anim"
+                className="cs-bg-green text-white hover:opacity-90 rounded-full px-7 h-12 text-base btn-anim w-full sm:w-auto"
                 onClick={() => navigate("/register")}
                 data-testid="hero-cta-primary"
               >
@@ -98,31 +98,31 @@ export default function Landing() {
               <Button
                 size="lg"
                 variant="outline"
-                className="rounded-full border-2 cs-border-navy cs-text-navy hover:bg-slate-50 px-7 h-12 text-base btn-anim"
+                className="rounded-full border-2 cs-border-navy cs-text-navy hover:bg-slate-50 px-7 h-12 text-base btn-anim w-full sm:w-auto"
                 onClick={() => document.getElementById("pricing")?.scrollIntoView({ behavior: "smooth" })}
                 data-testid="hero-cta-pricing"
               >
                 See pricing
               </Button>
             </div>
-            <div className="mt-8 flex items-center gap-6 text-xs text-slate-500">
+            <div className="mt-8 flex flex-wrap items-center gap-x-6 gap-y-2 text-xs text-slate-500">
               <div className="flex items-center gap-2"><CheckCircle2 size={14} className="cs-text-green" /> No paper. No queues.</div>
               <div className="flex items-center gap-2"><CheckCircle2 size={14} className="cs-text-green" /> WAEC-style grading.</div>
               <div className="flex items-center gap-2"><CheckCircle2 size={14} className="cs-text-green" /> Bank transfer + Card.</div>
             </div>
           </div>
-          <div className="relative">
+          <div className="relative mt-8 md:mt-0">
             <div className="absolute -top-6 -left-6 w-32 h-32 cs-bg-green opacity-10 rounded-2xl rotate-6" />
             <div className="absolute -bottom-6 -right-6 w-40 h-40 cs-bg-blue opacity-10 rounded-2xl -rotate-3" />
             <img
               src={HERO_IMG}
               alt="Nigerian classroom"
-              className="relative rounded-2xl shadow-xl object-cover w-full h-[440px]"
+              className="relative rounded-2xl shadow-xl object-cover w-full h-[260px] sm:h-[360px] md:h-[440px]"
               data-testid="hero-image"
             />
-            <div className="absolute -bottom-8 left-6 bg-white rounded-xl shadow-lg px-5 py-4 border border-slate-100">
+            <div className="absolute -bottom-6 left-4 sm:left-6 bg-white rounded-xl shadow-lg px-4 sm:px-5 py-3 sm:py-4 border border-slate-100">
               <div className="text-xs text-slate-500">Live in</div>
-              <div className="font-display font-bold text-2xl cs-text-navy">42 schools</div>
+              <div className="font-display font-bold text-xl sm:text-2xl cs-text-navy">42 schools</div>
               <div className="text-xs cs-text-green">Lagos · Abuja · Port Harcourt</div>
             </div>
           </div>
