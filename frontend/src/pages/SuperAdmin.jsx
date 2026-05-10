@@ -11,28 +11,32 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { api, formatApiError } from "@/lib/api";
 import { toast } from "sonner";
 import { Building2, Users, Inbox, AlertTriangle, Receipt, KeyRound, Eye } from "lucide-react";
+import { ChartCard, GrowthArea, DonutChart, BarSimple } from "@/components/Charts.jsx";
 
 export default function SuperAdmin() {
   const [stats, setStats] = useState(null);
   const [schools, setSchools] = useState([]);
   const [leads, setLeads] = useState([]);
   const [receipts, setReceipts] = useState([]);
+  const [analytics, setAnalytics] = useState(null);
   const [overrideOpen, setOverrideOpen] = useState(false);
   const [override, setOverride] = useState({ user_email: "", new_password: "" });
   const [viewReceipt, setViewReceipt] = useState(null);
 
   const refresh = async () => {
     try {
-      const [s, sc, l, r] = await Promise.all([
+      const [s, sc, l, r, an] = await Promise.all([
         api.get("/superadmin/stats"),
         api.get("/superadmin/schools"),
         api.get("/leads"),
         api.get("/payments/bank-receipts"),
+        api.get("/analytics/super"),
       ]);
       setStats(s.data);
       setSchools(sc.data.schools || []);
       setLeads(l.data.leads || []);
       setReceipts(r.data.receipts || []);
+      setAnalytics(an.data);
     } catch (e) {
       toast.error(formatApiError(e.response?.data?.detail) || e.message);
     }
@@ -116,9 +120,41 @@ export default function SuperAdmin() {
         <Tabs defaultValue="schools" className="mt-10">
           <TabsList>
             <TabsTrigger value="schools" data-testid="super-tab-schools">Schools</TabsTrigger>
+            <TabsTrigger value="analytics" data-testid="super-tab-analytics">Analytics</TabsTrigger>
             <TabsTrigger value="receipts" data-testid="super-tab-receipts">Bank receipts</TabsTrigger>
             <TabsTrigger value="leads" data-testid="super-tab-leads">Leads</TabsTrigger>
           </TabsList>
+          <TabsContent value="analytics" className="mt-4">
+            {analytics ? (
+              <div className="grid lg:grid-cols-2 gap-5">
+                <ChartCard title="School growth" subtitle="New schools onboarded per month" testid="chart-growth">
+                  <GrowthArea data={analytics.growth_series} xKey="month" yKey="schools" color="#28A745" />
+                </ChartCard>
+                <ChartCard title="Subscription mix" subtitle={`${analytics.active_schools} active · ${analytics.killed_schools} killed`} testid="chart-tiers">
+                  <DonutChart data={analytics.tier_series.map((t) => ({ name: t.tier, count: t.count }))} dataKey="count" nameKey="name" />
+                </ChartCard>
+                <ChartCard title="Receipts pipeline" subtitle="Status of bank-transfer receipts" testid="chart-receipts">
+                  <BarSimple data={[
+                    { name: "Pending", count: analytics.receipts.pending },
+                    { name: "Approved", count: analytics.receipts.approved },
+                    { name: "Rejected", count: analytics.receipts.rejected },
+                  ]} xKey="name" yKey="count" color="#0056B3" />
+                </ChartCard>
+                <ChartCard title="Leads funnel" subtitle={`Total ${analytics.leads.total} · ${analytics.leads.open} open`} testid="chart-leads">
+                  <BarSimple data={[
+                    { name: "Open", count: analytics.leads.open },
+                    { name: "Resolved", count: analytics.leads.resolved },
+                  ]} xKey="name" yKey="count" color="#28A745" />
+                </ChartCard>
+                <div className="cs-card p-6 col-span-full grid sm:grid-cols-3 gap-4">
+                  <div><div className="text-xs text-slate-500 uppercase">Payment volume (USD test)</div><div className="font-display text-3xl font-bold cs-text-navy">${analytics.payments.total_usd.toLocaleString()}</div></div>
+                  <div><div className="text-xs text-slate-500 uppercase">Paid transactions</div><div className="font-display text-3xl font-bold cs-text-navy">{analytics.payments.count}</div></div>
+                  <div><div className="text-xs text-slate-500 uppercase">Active schools</div><div className="font-display text-3xl font-bold cs-text-green">{analytics.active_schools}</div></div>
+                </div>
+              </div>
+            ) : <div className="text-slate-500">Loading analytics…</div>}
+          </TabsContent>
+
           <TabsContent value="schools" className="mt-4">
             <div className="cs-card overflow-hidden">
               <Table>

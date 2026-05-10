@@ -64,6 +64,17 @@ Brand: Deep Navy #002147, Vibrant Green #28A745, Electric Blue #0056B3. Visuals 
 - ✅ **Annual cumulative report** — `GET /api/reports/annual/{student_id}?year=2025/2026` returns 3-term subject matrix, session average, promotion status (Promoted to next class / Repeat current class), aggregated skill ratings, QR. Frontend route: `/report/annual/:studentId`. Buttons added to Parent Portal + Student Dashboard.
 - ✅ All 45/45 tests still passing (phase-1 register-parent test updated to assert new 422 behavior).
 
+## Phase-4 implemented (Feb 2026 — autonomous "make it productive" pass)
+- ✅ **Recharts wired across all admin sections** (brand colors only — Navy / Green / Electric Blue):
+  - **Super Admin** — Analytics tab: school growth area chart (6 months), subscription tier donut, receipts pipeline bar, leads funnel bar, payment volume tile.
+  - **School Admin Overview** — students-per-class bar, debt distribution donut, gender split donut, CBT activity area, subject averages bar.
+  - **Parent Portal** — per-child term progression line chart (loaded inline below each child card when fees are clear).
+  - **Student Dashboard** — personal term progression line + subject snapshot radar chart.
+- ✅ **CBT post-submit review** — `GET /api/cbt/attempts/{id}/review` returns full Q&A with correct answers + student picks. Frontend `/cbt/review/:attemptId` page colors correct vs. wrong, surfaced from the take-result screen and as a "Review answers" button on every completed exam card.
+- ✅ **Welcome Pack** — `/welcome-pack` route: print-ready A4 onboarding pack with school logo + motto, teacher list, parent portal directory, tear-off student login slips. One-click PDF via browser print.
+- ✅ **`/api/analytics/super`, `/api/analytics/school`, `/api/analytics/student/{id}`** — three aggregation endpoints with role-scoped data.
+- ✅ All 45/45 backend tests still passing. Frontend lint clean.
+
 ## Demo accounts (seeded)
 | Role | Email | Password |
 |---|---|---|

@@ -4,8 +4,7 @@ import Navbar from "@/components/Navbar.jsx";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/auth.jsx";
 import { api, formatApiError } from "@/lib/api";
-import { toast } from "sonner";
-import { Lock, FileText, AlertTriangle } from "lucide-react";
+import { toast } from "sonner";import { Lock, FileText, AlertTriangle } from "lucide-react";
 
 export default function ParentPortal() {
   const { user } = useAuth();
@@ -70,6 +69,7 @@ export default function ParentPortal() {
                     Result Checker is disabled until the outstanding balance is settled. Please contact the school bursary.
                   </div>
                 )}
+                {!debt && <ChildProgress studentId={c.id} />}
               </div>
             );
           })}

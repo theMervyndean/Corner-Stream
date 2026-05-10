@@ -103,7 +103,8 @@ export default function CBTTake() {
             <div className="cs-card p-3"><div className="text-xs text-slate-500">Total</div><div className="font-display font-bold text-2xl cs-text-navy">{result.total_qs}</div></div>
           </div>
           <p className="text-xs text-slate-500 mt-5">Your exam score has been auto-recorded for {exam.subject}.</p>
-          <Button onClick={() => navigate("/dashboard/student")} className="mt-6 cs-bg-navy text-white rounded-full hover:opacity-90" data-testid="cbt-return">Back to dashboard</Button>
+          <Button onClick={() => navigate("/dashboard/student")} className="mt-6 cs-bg-navy text-white rounded-full hover:opacity-90 btn-anim" data-testid="cbt-return">Back to dashboard</Button>
+          <Button onClick={() => navigate(`/cbt/review/${attempt.id}`)} variant="outline" className="mt-3 rounded-full btn-anim" data-testid="cbt-review-link">Review my answers</Button>
         </div>
       </div>
     );

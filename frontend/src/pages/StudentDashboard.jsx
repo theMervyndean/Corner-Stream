@@ -7,6 +7,7 @@ import { useAuth } from "@/lib/auth.jsx";
 import { api, formatApiError } from "@/lib/api";
 import { toast } from "sonner";
 import { BookOpen, FileText, Lock, Play, Trophy, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { ChartCard, LineSeries, SubjectRadar } from "@/components/Charts.jsx";
 
 export default function StudentDashboard() {
   const { user } = useAuth();
@@ -14,6 +15,7 @@ export default function StudentDashboard() {
   const [me, setMe] = useState(null);
   const [exams, setExams] = useState([]);
   const [subjects, setSubjects] = useState([]);
+  const [progress, setProgress] = useState(null);
 
   useEffect(() => {
     (async () => {
@@ -25,9 +27,13 @@ export default function StudentDashboard() {
         const student = meRes.data.student;
         setMe(student);
         setExams(examsRes.data.exams || []);
-        const subRes = await api.get(`/subjects`, { params: { class_name: student.class_name } });
+        const [subRes, prgRes] = await Promise.all([
+          api.get(`/subjects`, { params: { class_name: student.class_name } }),
+          api.get(`/analytics/student/${student.id}`),
+        ]);
         const list = subRes.data.class_subjects?.[0]?.subjects || [];
         setSubjects(list);
+        setProgress(prgRes.data);
       } catch (e) {
         toast.error(formatApiError(e.response?.data?.detail) || e.message);
       }
@@ -84,8 +90,7 @@ export default function StudentDashboard() {
         {/* CBT exams */}
         <div className="mt-10">
           <h2 className="font-display text-xl font-bold cs-text-navy">Computer-based tests</h2>
-          <p className="text-sm text-slate-500 mt-1">Take your exams here. Each test is timed.</p>
-          <div className="mt-4 grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <p className="text-sm text-slate-500 mt-1">Take your exams here. Each test is timed.</p>          <div className="mt-4 grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {exams.length ? exams.map((e) => {
               const completed = !!e.attempt?.completed_at;
               const score = e.attempt?.score_pct;
@@ -99,10 +104,20 @@ export default function StudentDashboard() {
                   <div className="text-xs text-slate-500 mt-1">{e.term} · {e.year} · {e.question_count} questions · {e.duration_min} min</div>
                   <div className="mt-5">
                     {completed ? (
-                      <div className="flex items-center gap-2 text-sm">
-                        <Trophy size={16} className="cs-text-green" />
-                        <span className="font-semibold cs-text-navy">Score: {score}%</span>
-                        <Badge className="cs-bg-green text-white ml-auto">Done</Badge>
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2 text-sm">
+                          <Trophy size={16} className="cs-text-green" />
+                          <span className="font-semibold cs-text-navy">Score: {score}%</span>
+                          <Badge className="cs-bg-green text-white ml-auto">Done</Badge>
+                        </div>
+                        <Button
+                          onClick={() => navigate(`/cbt/review/${e.attempt.id}`)}
+                          variant="outline"
+                          className="w-full rounded-full btn-anim text-xs"
+                          data-testid={`review-exam-${e.id}`}
+                        >
+                          Review answers
+                        </Button>
                       </div>
                     ) : (
                       <Button
@@ -119,6 +134,22 @@ export default function StudentDashboard() {
             }) : <div className="text-sm text-slate-500">No exams published yet.</div>}
           </div>
         </div>
+
+        {/* Progress charts */}
+        {progress && (progress.series?.length > 0 || progress.subject_radar?.length > 0) && (
+          <div className="mt-10 grid lg:grid-cols-2 gap-5">
+            {progress.series?.length > 0 && (
+              <ChartCard title="My term progression" subtitle="Average across all subjects" testid="student-chart-progress">
+                <LineSeries data={progress.series} xKey="term" yKey="average" color="#28A745" />
+              </ChartCard>
+            )}
+            {progress.subject_radar?.length > 0 && (
+              <ChartCard title="Subject snapshot" subtitle="Latest term performance by subject" testid="student-chart-radar">
+                <SubjectRadar data={progress.subject_radar} />
+              </ChartCard>
+            )}
+          </div>
+        )}
 
         {/* Result Checker */}
         <div className="mt-10 cs-card p-6 flex items-center justify-between flex-wrap gap-4">

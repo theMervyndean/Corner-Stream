@@ -87,10 +87,14 @@ api_router.include_router(superadmin_router)
 
 from routers.subjects import router as subjects_router  # noqa: E402
 from routers.cbt import router as cbt_router  # noqa: E402
+from routers.cbt_review import router as cbt_review_router  # noqa: E402
 from routers.users import router as users_router  # noqa: E402
+from routers.analytics import router as analytics_router  # noqa: E402
 api_router.include_router(subjects_router)
 api_router.include_router(cbt_router)
+api_router.include_router(cbt_review_router)
 api_router.include_router(users_router)
+api_router.include_router(analytics_router)
 
 app.include_router(api_router)
 

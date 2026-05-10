@@ -9,6 +9,8 @@ import Login from "@/pages/Login.jsx";
 import Register from "@/pages/Register.jsx";
 import StudentDashboard from "@/pages/StudentDashboard.jsx";
 import CBTTake from "@/pages/CBTTake.jsx";
+import CBTReview from "@/pages/CBTReview.jsx";
+import WelcomePack from "@/pages/WelcomePack.jsx";
 import AnnualReport from "@/pages/AnnualReport.jsx";
 import SchoolAdminDashboard from "@/pages/SchoolAdminDashboard.jsx";
 import TeacherDashboard from "@/pages/TeacherDashboard.jsx";
@@ -54,6 +56,8 @@ export default function App() {
           <Route path="/dashboard/student" element={<ProtectedRoute roles={["student"]}><StudentDashboard /></ProtectedRoute>} />
           <Route path="/dashboard/super" element={<ProtectedRoute roles={["super_admin"]}><SuperAdmin /></ProtectedRoute>} />
           <Route path="/cbt/:examId" element={<ProtectedRoute roles={["student"]}><CBTTake /></ProtectedRoute>} />
+          <Route path="/cbt/review/:attemptId" element={<ProtectedRoute><CBTReview /></ProtectedRoute>} />
+          <Route path="/welcome-pack" element={<ProtectedRoute roles={["school_admin"]}><WelcomePack /></ProtectedRoute>} />
           <Route path="/report/:studentId/:term" element={<ProtectedRoute><ReportCard /></ProtectedRoute>} />
           <Route path="/report/annual/:studentId" element={<ProtectedRoute><AnnualReport /></ProtectedRoute>} />
           <Route path="/admin" element={<Navigate to="/login?admin=1" replace />} />

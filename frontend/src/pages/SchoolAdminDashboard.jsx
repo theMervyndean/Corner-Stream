@@ -15,8 +15,9 @@ import { toast } from "sonner";
 import {
   Users, Receipt, FileBarChart, ShieldCheck, Upload, Plus, ArrowRight,
   AlertTriangle, CreditCard, KeyRound, Image as ImageIcon, BookOpen, Trash2,
-  CheckCircle2, Circle,
+  CheckCircle2, Circle, Download,
 } from "lucide-react";
+import { ChartCard, BarSimple, DonutChart, GrowthArea } from "@/components/Charts.jsx";
 
 const PRICING = {
   cbt_essentials: { name: "CBT Essentials", "1_term": 40000, "2_terms": 70000, "full_session": 110000 },
@@ -53,6 +54,8 @@ export default function SchoolAdminDashboard() {
 
   // Profile
   const [profileForm, setProfileForm] = useState({ name: "", principal_name: "", address: "", phone: "", email: "", motto: "", logo_url: "", founded_year: "", website: "" });
+  // Analytics
+  const [analytics, setAnalytics] = useState(null);
 
   // Users (teachers / parents)
   const [usersList, setUsersList] = useState([]);
@@ -64,18 +67,20 @@ export default function SchoolAdminDashboard() {
 
   const refresh = async () => {
     try {
-      const [sRes, stRes, rRes, sjRes, uRes] = await Promise.all([
+      const [sRes, stRes, rRes, sjRes, uRes, anRes] = await Promise.all([
         api.get("/schools/me"),
         api.get("/students"),
         api.get("/payments/bank-receipts"),
         api.get("/subjects"),
         api.get("/users"),
+        api.get("/analytics/school"),
       ]);
       setSchool(sRes.data.school);
       setStudents(stRes.data.students || []);
       setReceipts(rRes.data.receipts || []);
       setClassSubjects(sjRes.data.class_subjects || []);
       setUsersList(uRes.data.users || []);
+      setAnalytics(anRes.data);
       // Sync profile form
       const s = sRes.data.school;
       setProfileForm({
@@ -351,7 +356,33 @@ export default function SchoolAdminDashboard() {
               <p className="text-sm text-slate-500 mt-2">Required columns (row 1):</p>
               <code className="block mt-2 text-xs bg-slate-50 rounded p-3 border">name | age | gender | class_name | parent_email (optional) | balance_due (optional)</code>
               <p className="text-xs text-slate-500 mt-3">parent_email links a student to a Parent Portal user. balance_due triggers Debt Lock.</p>
+              <Button variant="outline" onClick={() => navigate("/welcome-pack")} className="mt-4 rounded-full btn-anim w-full" data-testid="welcome-pack-link"><Download size={14} className="mr-1" /> Generate Welcome Pack</Button>
             </div>
+
+            {/* Analytics row */}
+            {analytics && (
+              <div className="md:col-span-2 grid lg:grid-cols-2 gap-5">
+                <ChartCard title="Students per class" subtitle="Roster distribution" testid="chart-class">
+                  <BarSimple data={analytics.by_class.map((c) => ({ name: c.class, count: c.count }))} xKey="name" yKey="count" color="#0056B3" />
+                </ChartCard>
+                <ChartCard title="Debt distribution" subtitle="Outstanding balances by bracket" testid="chart-debt">
+                  <DonutChart data={analytics.debt_buckets.map((d) => ({ name: d.bucket, count: d.count }))} dataKey="count" nameKey="name" />
+                </ChartCard>
+                <ChartCard title="Gender split" subtitle="Across all enrolled students" testid="chart-gender">
+                  <DonutChart data={analytics.by_gender.map((g) => ({ name: g.gender, count: g.count }))} dataKey="count" nameKey="name" />
+                </ChartCard>
+                <ChartCard title="CBT activity" subtitle={`${analytics.cbt_total_attempts} total attempts · avg ${analytics.cbt_avg_pct}%`} testid="chart-cbt">
+                  <GrowthArea data={analytics.cbt_series} xKey="month" yKey="attempts" color="#28A745" />
+                </ChartCard>
+                {analytics.subject_averages.length > 0 && (
+                  <div className="lg:col-span-2">
+                    <ChartCard title="Subject averages" subtitle="Average total score across all terms" testid="chart-subjects">
+                      <BarSimple data={analytics.subject_averages.map((s) => ({ name: s.subject, count: s.average }))} xKey="name" yKey="count" color="#002147" />
+                    </ChartCard>
+                  </div>
+                )}
+              </div>
+            )}
           </TabsContent>
 
           {/* PROFILE TAB */}
