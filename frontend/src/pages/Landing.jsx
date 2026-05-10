@@ -348,10 +348,13 @@ export default function Landing() {
           <div className="md:col-span-2 relative">
             <div className="absolute -top-4 -left-4 w-28 h-28 cs-bg-green opacity-10 rounded-2xl rotate-6" />
             <div className="absolute -bottom-4 -right-4 w-32 h-32 cs-bg-blue opacity-10 rounded-2xl -rotate-3" />
-            <div className="relative cs-card p-8 text-center">
-              <div className="w-24 h-24 rounded-full mx-auto cs-bg-navy text-white flex items-center justify-center font-display text-3xl font-extrabold">
-                MH
-              </div>
+            <div className="relative cs-card p-6 text-center overflow-hidden">
+              <img
+                src="https://customer-assets.emergentagent.com/job_digital-results-6/artifacts/q6174sf8_1000384115%20-%20Copyy.png"
+                alt="Mervydean Hilary — Founder, Corner Streams"
+                className="w-full h-72 sm:h-80 rounded-xl object-cover object-top"
+                data-testid="founder-photo"
+              />
               <div className="mt-5 font-display font-bold text-xl cs-text-navy">Mervydean Hilary</div>
               <div className="text-xs text-slate-500 mt-1">Founder · Corner Streams</div>
               <div className="mt-4 inline-flex items-center gap-2 text-xs px-3 py-1 rounded-full cs-bg-green text-white">
