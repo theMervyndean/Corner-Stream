@@ -30,6 +30,8 @@ export default function Navbar({ variant = "landing" }) {
           {variant === "landing" && (
             <>
               <a href="#features" className="hover:cs-text-blue transition-colors" data-testid="nav-features">Features</a>
+              <a href="#samples" className="hover:cs-text-blue transition-colors" data-testid="nav-samples">Samples</a>
+              <a href="#about" className="hover:cs-text-blue transition-colors" data-testid="nav-about">About</a>
               <a href="#pricing" className="hover:cs-text-blue transition-colors" data-testid="nav-pricing">Pricing</a>
               <a href="#contact" className="hover:cs-text-blue transition-colors" data-testid="nav-contact">Contact</a>
             </>
