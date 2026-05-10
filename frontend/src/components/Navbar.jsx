@@ -22,8 +22,9 @@ export default function Navbar({ variant = "landing" }) {
   return (
     <header className={`w-full ${variant === "dashboard" ? "bg-white border-b border-[#E2E8F0]" : "bg-transparent"}`}>
       <div className="max-w-7xl mx-auto flex items-center justify-between px-6 py-4">
-        <Link to="/" data-testid="nav-home-link">
+        <Link to="/" data-testid="nav-home-link" className="flex items-center gap-2">
           <Logo />
+          <span className="text-[10px] font-bold tracking-wider px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300" data-testid="nav-beta-badge">BETA</span>
         </Link>
         <nav className="hidden md:flex items-center gap-7 text-sm font-medium cs-text-navy">
           {variant === "landing" && (
