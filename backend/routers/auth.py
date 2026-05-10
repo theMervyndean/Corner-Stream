@@ -12,14 +12,16 @@ class RegisterIn(BaseModel):
     email: EmailStr
     password: str = Field(min_length=6)
     name: str
-    school_name: str  # always required — public register is school admin only
+    school_name: str
+    username: Optional[str] = Field(default=None, pattern=r"^[a-zA-Z0-9_]{3,30}$")
     principal_name: Optional[str] = None
     school_phone: Optional[str] = None
     school_address: Optional[str] = None
 
 
 class LoginIn(BaseModel):
-    email: EmailStr
+    identifier: Optional[str] = None  # email OR username
+    email: Optional[EmailStr] = None  # backward compat
     password: str
 
 
@@ -27,9 +29,14 @@ def _user_public(u: dict) -> dict:
     return {
         "id": u["id"],
         "email": u["email"],
+        "username": u.get("username"),
         "name": u["name"],
         "role": u["role"],
         "school_id": u.get("school_id"),
+        "student_id": u.get("student_id"),
+        "assigned_class": u.get("assigned_class"),
+        "assigned_classes": u.get("assigned_classes", []),
+        "school_role": u.get("school_role"),
     }
 
 
@@ -68,6 +75,11 @@ async def register(payload: RegisterIn, response: Response):
         "name": payload.name, "role": "school_admin",
         "school_id": school_id, "created_at": now_iso(),
     }
+    if payload.username:
+        un = payload.username.lower().strip()
+        if await db.users.find_one({"username": un}):
+            raise HTTPException(status_code=400, detail="Username already taken")
+        user_doc["username"] = un
     await db.users.insert_one(user_doc)
 
     token = create_access_token(user_id, email, "school_admin")
@@ -78,10 +90,16 @@ async def register(payload: RegisterIn, response: Response):
 @router.post("/login")
 async def login(payload: LoginIn, response: Response):
     db = get_db()
-    email = payload.email.lower().strip()
-    user = await db.users.find_one({"email": email})
+    identifier = (payload.identifier or payload.email or "").strip().lower()
+    if not identifier:
+        raise HTTPException(status_code=400, detail="email or username required")
+    # Look up by email OR username
+    if "@" in identifier:
+        user = await db.users.find_one({"email": identifier})
+    else:
+        user = await db.users.find_one({"username": identifier})
     if not user or not verify_password(payload.password, user["password_hash"]):
-        raise HTTPException(status_code=401, detail="Invalid email or password")
+        raise HTTPException(status_code=401, detail="Invalid credentials")
 
     # Kill-switch check for non-super-admins
     if user["role"] != "super_admin" and user.get("school_id"):
