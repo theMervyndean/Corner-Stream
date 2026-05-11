@@ -143,6 +143,23 @@ export default function TeacherDashboard() {
     next[qi].options[oi] = val;
     setExamForm({ ...examForm, questions: next });
   };
+  const addOption = (qi) => {
+    const next = [...examForm.questions];
+    if ((next[qi].options || []).length >= 6) { toast.error("Max 6 options"); return; }
+    next[qi].options = [...(next[qi].options || []), ""];
+    setExamForm({ ...examForm, questions: next });
+  };
+  const removeOption = (qi, oi) => {
+    const next = [...examForm.questions];
+    const opts = [...(next[qi].options || [])];
+    if (opts.length <= 2) { toast.error("Minimum 2 options"); return; }
+    opts.splice(oi, 1);
+    next[qi].options = opts;
+    // Re-anchor correct_idx if it was on/after removed option
+    if (next[qi].correct_idx === oi) next[qi].correct_idx = 0;
+    else if (next[qi].correct_idx > oi) next[qi].correct_idx = next[qi].correct_idx - 1;
+    setExamForm({ ...examForm, questions: next });
+  };
   const setQuestionType = (qi, newType) => {
     const next = [...examForm.questions];
     if (newType === "true_false") {
@@ -465,13 +482,33 @@ export default function TeacherDashboard() {
                     ))}
                   </div>
                 ) : (
-                  <div className="grid grid-cols-2 gap-2">
-                    {q.options.map((opt, oi) => (
-                      <div key={oi} className={`flex items-center gap-2 p-2 rounded border ${q.correct_idx === oi ? "border-[#28A745] bg-green-50" : ""}`}>
-                        <button type="button" onClick={() => updateQuestion(qi, { correct_idx: oi })} className={`w-7 h-7 rounded-full text-xs font-bold flex items-center justify-center ${q.correct_idx === oi ? "cs-bg-green text-white" : "bg-slate-100 text-slate-600"}`} title="Mark as correct" data-testid={`ex-q-correct-${qi}-${oi}`}>{String.fromCharCode(65 + oi)}</button>
-                        <Input value={opt} onChange={(e) => updateOption(qi, oi, e.target.value)} placeholder={`Option ${String.fromCharCode(65 + oi)}`} data-testid={`ex-q-opt-${qi}-${oi}`} />
-                      </div>
-                    ))}
+                  <div className="space-y-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {q.options.map((opt, oi) => (
+                        <div key={oi} className={`flex items-center gap-2 p-2 rounded border ${q.correct_idx === oi ? "border-[#28A745] bg-green-50" : ""}`}>
+                          <button type="button" onClick={() => updateQuestion(qi, { correct_idx: oi })} className={`w-7 h-7 rounded-full text-xs font-bold flex items-center justify-center flex-shrink-0 ${q.correct_idx === oi ? "cs-bg-green text-white" : "bg-slate-100 text-slate-600"}`} title="Mark as correct" data-testid={`ex-q-correct-${qi}-${oi}`}>{String.fromCharCode(65 + oi)}</button>
+                          <Input value={opt} onChange={(e) => updateOption(qi, oi, e.target.value)} placeholder={`Option ${String.fromCharCode(65 + oi)}`} data-testid={`ex-q-opt-${qi}-${oi}`} />
+                          {q.options.length > 2 && (
+                            <button type="button" onClick={() => removeOption(qi, oi)} className="text-slate-400 hover:text-red-500 p-1" title="Remove option" data-testid={`ex-q-opt-remove-${qi}-${oi}`}>
+                              <X size={14} />
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                    {q.options.length < 6 && (
+                      <button
+                        type="button"
+                        onClick={() => addOption(qi)}
+                        className="text-xs cs-text-blue font-semibold hover:underline inline-flex items-center gap-1"
+                        data-testid={`ex-q-add-opt-${qi}`}
+                      >
+                        <Plus size={12} /> Add option {String.fromCharCode(65 + q.options.length)}
+                      </button>
+                    )}
+                    <div className="text-[11px] text-slate-500">
+                      {q.options.length} options · max 6 · min 2
+                    </div>
                   </div>
                 )}
                 <div className="text-xs text-slate-500">
