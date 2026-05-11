@@ -18,6 +18,7 @@ import ParentPortal from "@/pages/ParentPortal.jsx";
 import SuperAdmin from "@/pages/SuperAdmin.jsx";
 import ReportCard from "@/pages/ReportCard.jsx";
 import CheckoutReturn from "@/pages/CheckoutReturn.jsx";
+import InstallPrompt from "@/components/InstallPrompt.jsx";
 
 import "@/App.css";
 
@@ -46,6 +47,7 @@ export default function App() {
     <AuthProvider>
       <BrowserRouter>
         <Toaster richColors position="top-right" />
+        <InstallPrompt />
         <Routes>
           <Route path="/" element={<HomeRoute />} />
           <Route path="/login" element={<Login />} />
