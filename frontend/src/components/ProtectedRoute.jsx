@@ -16,6 +16,10 @@ export default function ProtectedRoute({ children, roles }) {
   if (!user) return <Navigate to="/login" replace />;
 
   if (roles && roles.length && !roles.includes(user.role)) {
+    // Promoted users with is_admin flag can access school_admin routes too.
+    if (roles.includes("school_admin") && user.is_admin) {
+      return children;
+    }
     return <Navigate to="/" replace />;
   }
 

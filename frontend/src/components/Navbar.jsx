@@ -1,9 +1,14 @@
-import React from "react";
+import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "@/lib/auth.jsx";
 import Logo from "@/components/Logo.jsx";
 import { Button } from "@/components/ui/button";
-import { LogOut } from "lucide-react";
+import { LogOut, KeyRound, ShieldCheck, ChevronDown } from "lucide-react";
+import ChangePasswordDialog from "@/components/ChangePasswordDialog.jsx";
+import {
+  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent,
+  DropdownMenuItem, DropdownMenuSeparator, DropdownMenuLabel,
+} from "@/components/ui/dropdown-menu";
 
 const ROLE_DASH = {
   super_admin: "/dashboard/super",
@@ -13,11 +18,22 @@ const ROLE_DASH = {
   student: "/dashboard/student",
 };
 
+const ROLE_LABEL = {
+  super_admin: "Super admin",
+  school_admin: "School admin",
+  teacher: "Teacher",
+  parent: "Parent",
+  student: "Student",
+};
+
 export default function Navbar({ variant = "landing" }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const [cpOpen, setCpOpen] = useState(false);
 
   const isAuth = user && typeof user === "object";
+  const hasAdminPowers = isAuth && (user.role === "school_admin" || user.is_admin);
+  const isPromoted = isAuth && user.is_admin && user.role !== "school_admin";
 
   return (
     <header className={`w-full ${variant === "dashboard" ? "bg-white border-b border-[#E2E8F0]" : "bg-transparent"}`}>
@@ -52,28 +68,61 @@ export default function Navbar({ variant = "landing" }) {
             </>
           ) : (
             <>
-              <Button
-                variant="outline"
-                size="sm"
-                className="rounded-full px-3 sm:px-4"
-                onClick={() => navigate(ROLE_DASH[user.role] || "/")}
-                data-testid="nav-dashboard-btn"
-              >
-                Dashboard
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="px-2 sm:px-4"
-                onClick={async () => { await logout(); navigate("/"); }}
-                data-testid="nav-logout-btn"
-              >
-                <LogOut size={16} className="sm:mr-1" /> <span className="hidden sm:inline">Sign out</span>
-              </Button>
+              {isPromoted && (
+                <span className="hidden sm:inline-flex items-center gap-1 text-[10px] font-bold tracking-wider px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300" data-testid="nav-admin-badge">
+                  <ShieldCheck size={10} /> ADMIN POWERS
+                </span>
+              )}
+              {/* Quick admin-dashboard button for promoted users */}
+              {isPromoted && (
+                <Button
+                  variant="outline" size="sm" className="rounded-full px-3 sm:px-4 hidden sm:inline-flex"
+                  onClick={() => navigate("/dashboard/school")}
+                  data-testid="nav-admin-dash-btn"
+                >
+                  <ShieldCheck size={14} className="mr-1" /> Admin
+                </Button>
+              )}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" className="rounded-full px-3 sm:px-4" data-testid="nav-user-menu">
+                    <span className="hidden sm:inline mr-1">{user.name?.split(" ")[0] || "Account"}</span>
+                    <ChevronDown size={14} />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuLabel>
+                    <div className="font-medium cs-text-navy">{user.name}</div>
+                    <div className="text-[11px] text-slate-500 font-normal">{ROLE_LABEL[user.role] || user.role}</div>
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => navigate(ROLE_DASH[user.role] || "/")} data-testid="menu-dashboard">
+                    My dashboard
+                  </DropdownMenuItem>
+                  {hasAdminPowers && user.role !== "school_admin" && (
+                    <DropdownMenuItem onClick={() => navigate("/dashboard/school")} data-testid="menu-admin-dashboard">
+                      <ShieldCheck size={14} className="mr-2" /> Admin dashboard
+                    </DropdownMenuItem>
+                  )}
+                  <DropdownMenuItem onClick={() => setCpOpen(true)} data-testid="menu-change-password">
+                    <KeyRound size={14} className="mr-2" /> Change password
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onClick={async () => { await logout(); navigate("/"); }}
+                    data-testid="menu-logout"
+                    className="text-red-600 focus:text-red-700"
+                  >
+                    <LogOut size={14} className="mr-2" /> Sign out
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </>
           )}
         </div>
       </div>
+
+      <ChangePasswordDialog open={cpOpen} onOpenChange={setCpOpen} />
     </header>
   );
 }

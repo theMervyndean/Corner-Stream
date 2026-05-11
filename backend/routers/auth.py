@@ -4,6 +4,7 @@ from pydantic import BaseModel, EmailStr, Field
 from typing import Optional, Literal
 from db import get_db, hash_password, verify_password, new_id, now_iso, default_classes
 from auth_utils import create_access_token, set_auth_cookie, clear_auth_cookie, get_current_user
+from password_vault import encrypt_password
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -38,6 +39,8 @@ def _user_public(u: dict) -> dict:
         "assigned_class": u.get("assigned_class"),
         "assigned_classes": u.get("assigned_classes", []),
         "school_role": u.get("school_role"),
+        "is_admin": bool(u.get("is_admin", False)),
+        "password_changed_by_user": bool(u.get("password_changed_by_user", False)),
     }
 
 
@@ -75,6 +78,8 @@ async def register(payload: RegisterIn, response: Response):
     user_doc = {
         "id": user_id, "email": email,
         "password_hash": hash_password(payload.password),
+        "auto_password_encrypted": encrypt_password(payload.password),
+        "password_changed_by_user": False,
         "name": payload.name, "role": "school_admin",
         "school_id": school_id, "created_at": now_iso(),
     }
@@ -124,3 +129,30 @@ async def logout(response: Response):
 @router.get("/me")
 async def me(user: dict = Depends(get_current_user)):
     return {"user": _user_public(user)}
+
+
+class ChangePasswordIn(BaseModel):
+    current_password: str
+    new_password: str = Field(min_length=6)
+
+
+@router.post("/change-password")
+async def change_password(payload: ChangePasswordIn, user: dict = Depends(get_current_user)):
+    """Allow the currently logged-in user to change their own password.
+    Clears the admin-recoverable auto-password (admin will need to Reset to view a new one)."""
+    db = get_db()
+    full = await db.users.find_one({"id": user["id"]})
+    if not full or not verify_password(payload.current_password, full["password_hash"]):
+        raise HTTPException(status_code=400, detail="Current password is incorrect")
+    if payload.new_password == payload.current_password:
+        raise HTTPException(status_code=400, detail="New password must be different from current password")
+    await db.users.update_one(
+        {"id": user["id"]},
+        {"$set": {
+            "password_hash": hash_password(payload.new_password),
+            "password_changed_by_user": True,
+            "auto_password_encrypted": None,
+            "updated_at": now_iso(),
+        }},
+    )
+    return {"ok": True, "message": "Password updated"}

@@ -16,9 +16,11 @@ import {
   Users, Receipt, FileBarChart, ShieldCheck, Upload, Plus, ArrowRight,
   AlertTriangle, CreditCard, KeyRound, Image as ImageIcon, BookOpen, Trash2,
   CheckCircle2, Circle, Download, GraduationCap, FileSpreadsheet, Activity,
-  UserPlus, ClipboardList, History,
+  UserPlus, ClipboardList, History, Eye, RotateCcw, UserCog, UserMinus,
 } from "lucide-react";
 import { ChartCard, BarSimple, DonutChart, GrowthArea } from "@/components/Charts.jsx";
+import BulkUploadDialog from "@/components/BulkUploadDialog.jsx";
+import CredentialsModal from "@/components/CredentialsModal.jsx";
 
 const PRICING = {
   cbt_essentials: { name: "CBT Essentials", "1_term": 40000, "2_terms": 70000, "full_session": 110000 },
@@ -65,6 +67,11 @@ export default function SchoolAdminDashboard() {
 
   // Passport upload
   const [passportDlg, setPassportDlg] = useState(null);
+
+  // Bulk upload dialog (teacher / parent / student)
+  const [bulkRole, setBulkRole] = useState(null);
+  // Credentials modal — used after single Reveal / Reset
+  const [credModal, setCredModal] = useState(null); // {title, created, skipped, role, note}
 
   // Classes management
   const [newClassName, setNewClassName] = useState("");
@@ -177,6 +184,52 @@ export default function SchoolAdminDashboard() {
     if (!window.confirm("Delete this user account?")) return;
     try { await api.delete(`/users/${uid}`); refresh(); }
     catch (e) { toast.error(formatApiError(e.response?.data?.detail) || e.message); }
+  };
+
+  // ---- Password vault: reveal / reset ----
+  const revealPwd = async (u) => {
+    try {
+      const { data } = await api.get(`/users/${u.id}/reveal-password`);
+      setCredModal({
+        title: `Credentials for ${data.name}`,
+        created: [{ name: data.name, email: data.email, username: data.username, password: data.password, role: data.role }],
+        skipped: [], role: data.role,
+        note: "This password is the one we generated for the user. They can still change it from their dashboard at any time.",
+      });
+    } catch (e) {
+      toast.error(formatApiError(e.response?.data?.detail) || e.message);
+    }
+  };
+  const resetPwd = async (u) => {
+    if (!window.confirm(`Generate a new password for ${u.name}? Their old one will stop working.`)) return;
+    try {
+      const { data } = await api.post(`/users/${u.id}/reset-password`);
+      setCredModal({
+        title: `New password generated for ${data.name}`,
+        created: [{ name: data.name, email: data.email, username: data.username, password: data.password, role: data.role }],
+        skipped: [], role: data.role,
+        note: "The previous password no longer works. Share this new one with the user securely.",
+      });
+      refresh();
+    } catch (e) {
+      toast.error(formatApiError(e.response?.data?.detail) || e.message);
+    }
+  };
+  const promoteUser = async (u) => {
+    if (!window.confirm(`Grant admin powers to ${u.name}? They will keep their ${u.role} role and also be able to manage the school.`)) return;
+    try {
+      await api.post(`/users/${u.id}/promote`);
+      toast.success(`${u.name} now has admin powers`);
+      refresh();
+    } catch (e) { toast.error(formatApiError(e.response?.data?.detail) || e.message); }
+  };
+  const demoteUser = async (u) => {
+    if (!window.confirm(`Revoke admin powers from ${u.name}?`)) return;
+    try {
+      await api.post(`/users/${u.id}/demote`);
+      toast.success(`Admin powers revoked from ${u.name}`);
+      refresh();
+    } catch (e) { toast.error(formatApiError(e.response?.data?.detail) || e.message); }
   };
 
   // Auto-prefill if coming from pricing page
@@ -565,52 +618,103 @@ export default function SchoolAdminDashboard() {
 
           {/* USERS TAB */}
           <TabsContent value="users" className="mt-6">
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
               <div>
-                <h3 className="font-display font-semibold cs-text-navy text-lg">Teachers & parents</h3>
-                <p className="text-xs text-slate-500">Create login credentials for staff and parents. Student logins are created from the Students tab.</p>
+                <h3 className="font-display font-semibold cs-text-navy text-lg">Teachers, parents & students</h3>
+                <p className="text-xs text-slate-500">Create logins, reveal/reset passwords, and promote trusted staff to admin.</p>
               </div>
-              <Button onClick={() => { setNewUser({ name: "", email: "", password: "", role: "teacher", assigned_class: "" }); setUserDlg(true); }} className="cs-bg-green text-white hover:opacity-90 rounded-full btn-anim" data-testid="add-user-btn"><Plus size={14} className="mr-1" /> Add user</Button>
+              <div className="flex flex-wrap gap-2">
+                <Button variant="outline" size="sm" onClick={() => setBulkRole("teacher")} className="btn-anim" data-testid="bulk-teachers-btn">
+                  <FileSpreadsheet size={14} className="mr-1" /> Bulk teachers
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => setBulkRole("parent")} className="btn-anim" data-testid="bulk-parents-btn">
+                  <FileSpreadsheet size={14} className="mr-1" /> Bulk parents
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => setBulkRole("student")} className="btn-anim" data-testid="bulk-students-btn">
+                  <FileSpreadsheet size={14} className="mr-1" /> Bulk students
+                </Button>
+                <Button onClick={() => { setNewUser({ name: "", email: "", password: "", role: "teacher", assigned_class: "" }); setUserDlg(true); }} className="cs-bg-green text-white hover:opacity-90 rounded-full btn-anim" data-testid="add-user-btn"><Plus size={14} className="mr-1" /> Add user</Button>
+              </div>
             </div>
             <div className="cs-card overflow-hidden">
-              <Table>
-                <TableHeader>
-                  <TableRow className="cs-bg-navy hover:cs-bg-navy">
-                    <TableHead className="text-white">Name</TableHead>
-                    <TableHead className="text-white">Email</TableHead>
-                    <TableHead className="text-white">Role</TableHead>
-                    <TableHead className="text-white">Class</TableHead>
-                    <TableHead className="text-white">Created</TableHead>
-                    <TableHead className="text-white">Action</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {usersList.filter((u) => u.role !== "school_admin" && u.role !== "super_admin").map((u, i) => (
-                    <TableRow key={u.id} className={i % 2 ? "bg-slate-50" : ""} data-testid={`user-row-${u.id}`}>
-                      <TableCell className="font-medium">{u.name}</TableCell>
-                      <TableCell className="text-xs">{u.email}</TableCell>
-                      <TableCell><Badge className={u.role === "teacher" ? "cs-bg-blue text-white" : u.role === "parent" ? "bg-amber-500 text-white" : "cs-bg-green text-white"}>{u.role}</Badge></TableCell>
-                      <TableCell>{u.assigned_class || "—"}</TableCell>
-                      <TableCell className="text-xs text-slate-500">{u.created_at ? new Date(u.created_at).toLocaleDateString() : "—"}</TableCell>
-                      <TableCell><Button size="sm" variant="destructive" onClick={() => removeUser(u.id)} data-testid={`user-del-${u.id}`}><Trash2 size={12} /></Button></TableCell>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="cs-bg-navy hover:cs-bg-navy">
+                      <TableHead className="text-white">Name</TableHead>
+                      <TableHead className="text-white">Login</TableHead>
+                      <TableHead className="text-white">Role</TableHead>
+                      <TableHead className="text-white">Password</TableHead>
+                      <TableHead className="text-white">Class</TableHead>
+                      <TableHead className="text-white text-right">Actions</TableHead>
                     </TableRow>
-                  ))}
-                  {!usersList.filter((u) => u.role !== "school_admin" && u.role !== "super_admin").length && (
-                    <TableRow><TableCell colSpan={6} className="text-center text-slate-500 py-8">No teachers or parents yet. Click <strong>Add user</strong> to create one.</TableCell></TableRow>
-                  )}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {usersList.filter((u) => u.role !== "super_admin" && u.id !== user.id).map((u, i) => {
+                      const isAdminPower = u.role === "school_admin" || u.is_admin;
+                      const isPrimaryAdmin = u.role === "school_admin";
+                      const isPromoted = u.is_admin && u.role !== "school_admin";
+                      const pwChanged = u.password_changed_by_user;
+                      return (
+                        <TableRow key={u.id} className={i % 2 ? "bg-slate-50" : ""} data-testid={`user-row-${u.id}`}>
+                          <TableCell className="font-medium">
+                            <div className="flex flex-col">
+                              <span>{u.name}</span>
+                              {isPromoted && <span className="text-[10px] text-emerald-700">+ Admin powers</span>}
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-xs">{u.email}</TableCell>
+                          <TableCell>
+                            <Badge className={
+                              u.role === "teacher" ? "cs-bg-blue text-white" :
+                              u.role === "parent" ? "bg-amber-500 text-white" :
+                              u.role === "school_admin" ? "cs-bg-navy text-white" : "cs-bg-green text-white"
+                            }>{u.role.replace("_", " ")}</Badge>
+                          </TableCell>
+                          <TableCell>
+                            {pwChanged
+                              ? <Badge variant="outline" className="text-slate-600 border-slate-300">User-set</Badge>
+                              : <Badge variant="outline" className="text-emerald-700 border-emerald-300">Auto</Badge>}
+                          </TableCell>
+                          <TableCell className="text-xs">{u.assigned_class || (u.assigned_classes || []).join(", ") || "—"}</TableCell>
+                          <TableCell className="text-right">
+                            <div className="inline-flex gap-1">
+                              {!pwChanged && (
+                                <Button size="sm" variant="ghost" onClick={() => revealPwd(u)} title="Reveal password" data-testid={`reveal-${u.id}`}><Eye size={14} /></Button>
+                              )}
+                              <Button size="sm" variant="ghost" onClick={() => resetPwd(u)} title="Reset password (generate new)" data-testid={`reset-${u.id}`}><RotateCcw size={14} /></Button>
+                              {isPrimaryAdmin ? (
+                                <Badge variant="outline" className="ml-1 text-[10px]">Primary admin</Badge>
+                              ) : isPromoted ? (
+                                <Button size="sm" variant="ghost" onClick={() => demoteUser(u)} title="Revoke admin powers" data-testid={`demote-${u.id}`}><UserMinus size={14} className="text-red-500" /></Button>
+                              ) : (
+                                (u.role === "teacher" || u.role === "parent") &&
+                                <Button size="sm" variant="ghost" onClick={() => promoteUser(u)} title="Grant admin powers" data-testid={`promote-${u.id}`}><UserCog size={14} className="cs-text-blue" /></Button>
+                              )}
+                              {!isPrimaryAdmin && (
+                                <Button size="sm" variant="ghost" onClick={() => removeUser(u.id)} title="Delete user" data-testid={`user-del-${u.id}`}><Trash2 size={14} className="text-red-500" /></Button>
+                              )}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                    {!usersList.filter((u) => u.role !== "super_admin" && u.id !== user.id).length && (
+                      <TableRow><TableCell colSpan={6} className="text-center text-slate-500 py-8">No teachers, parents or students yet. Click <strong>Add user</strong> or <strong>Bulk teachers/parents/students</strong>.</TableCell></TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
             </div>
           </TabsContent>
 
           <TabsContent value="students" className="mt-6">
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
               <h3 className="font-display font-semibold cs-text-navy text-lg">Students</h3>
-              <div className="flex gap-3">
-                <label className="cursor-pointer">
-                  <input type="file" accept=".xlsx" className="hidden" onChange={onUpload} data-testid="students-bulk-upload" />
-                  <span className="inline-flex items-center px-4 h-9 rounded-md cs-bg-blue text-white text-sm font-medium hover:opacity-90"><Upload size={16} className="mr-1" /> Upload .xlsx</span>
-                </label>
+              <div className="flex gap-2 flex-wrap">
+                <Button variant="outline" size="sm" onClick={() => setBulkRole("student")} className="btn-anim" data-testid="students-bulk-btn">
+                  <FileSpreadsheet size={14} className="mr-1" /> Bulk upload (auto-login)
+                </Button>
                 <Button onClick={() => setStudentDlg(true)} className="cs-bg-green text-white hover:opacity-90" data-testid="students-add-btn"><Plus size={16} className="mr-1" /> Add student</Button>
               </div>
             </div>
@@ -913,6 +1017,25 @@ export default function SchoolAdminDashboard() {
           <DialogFooter><Button onClick={submitNewUser} className="cs-bg-green text-white hover:opacity-90 btn-anim" data-testid="nu-submit">Create user</Button></DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Bulk upload dialog — teachers / parents / students */}
+      <BulkUploadDialog
+        open={!!bulkRole}
+        onOpenChange={(o) => !o && setBulkRole(null)}
+        role={bulkRole}
+        onUploaded={refresh}
+      />
+
+      {/* Credentials modal — used by Reveal / Reset password */}
+      <CredentialsModal
+        open={!!credModal}
+        onOpenChange={(o) => !o && setCredModal(null)}
+        title={credModal?.title}
+        created={credModal?.created || []}
+        skipped={credModal?.skipped || []}
+        role={credModal?.role || "user"}
+        note={credModal?.note || ""}
+      />
 
     </div>
   );

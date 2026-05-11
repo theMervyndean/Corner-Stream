@@ -4,6 +4,7 @@ import uuid
 from datetime import datetime, timezone, timedelta
 from motor.motor_asyncio import AsyncIOMotorClient
 import bcrypt
+from password_vault import encrypt_password
 
 _client: AsyncIOMotorClient | None = None
 _db = None
@@ -107,13 +108,21 @@ async def seed_demo_data():
     """Seed super admin + demo school with admin/teacher/parent/student + students + subjects + CBT."""
     db = get_db()
 
+    def _seed_password_fields(pwd: str) -> dict:
+        """Return the password fields used during seeding so admin can reveal seeded passwords."""
+        return {
+            "password_hash": hash_password(pwd),
+            "auto_password_encrypted": encrypt_password(pwd),
+            "password_changed_by_user": False,
+        }
+
     # Super admin
     super_email = os.environ["ADMIN_EMAIL"]
     super_pw = os.environ["ADMIN_PASSWORD"]
     if not await db.users.find_one({"email": super_email}):
         await db.users.insert_one({
             "id": new_id(), "email": super_email,
-            "password_hash": hash_password(super_pw),
+            **_seed_password_fields(super_pw),
             "name": "Super Admin", "role": "super_admin",
             "school_id": None, "created_at": now_iso(),
         })
@@ -150,7 +159,7 @@ async def seed_demo_data():
     if not await db.users.find_one({"email": "admin@demo.school"}):
         await db.users.insert_one({
             "id": new_id(), "email": "admin@demo.school",
-            "password_hash": hash_password("Admin@123"),
+            **_seed_password_fields("Admin@123"),
             "name": "Chinedu Eze", "role": "school_admin",
             "school_id": demo_school_id, "created_at": now_iso(),
         })
@@ -161,9 +170,10 @@ async def seed_demo_data():
         teacher_id = new_id()
         await db.users.insert_one({
             "id": teacher_id, "email": "teacher@demo.school",
-            "password_hash": hash_password("Teacher@123"),
+            **_seed_password_fields("Teacher@123"),
             "name": "Mr. Bayo Adeyemi", "role": "teacher",
             "school_id": demo_school_id, "assigned_class": "JSS 1",
+            "assigned_classes": ["JSS 1"],
             "created_at": now_iso(),
         })
     else:
@@ -173,7 +183,7 @@ async def seed_demo_data():
     if not await db.users.find_one({"email": "parent@demo.school"}):
         await db.users.insert_one({
             "id": new_id(), "email": "parent@demo.school",
-            "password_hash": hash_password("Parent@123"),
+            **_seed_password_fields("Parent@123"),
             "name": "Mr. Tunde Okafor", "role": "parent",
             "school_id": demo_school_id, "created_at": now_iso(),
         })
@@ -233,7 +243,7 @@ async def seed_demo_data():
     if adaeze and not await db.users.find_one({"email": "adaeze@demo.school"}):
         await db.users.insert_one({
             "id": new_id(), "email": "adaeze@demo.school",
-            "password_hash": hash_password("Student@123"),
+            **_seed_password_fields("Student@123"),
             "name": "Adaeze Okafor", "role": "student",
             "school_id": demo_school_id, "student_id": adaeze["id"],
             "created_at": now_iso(),
@@ -277,3 +287,31 @@ async def seed_demo_data():
                 q["image_url"] = ""
             new_qs.append(q)
         await db.cbt_exams.update_one({"id": ex["id"]}, {"$set": {"questions": new_qs}})
+
+    # Backfill demo seeded users' auto-password (so "Reveal password" works for
+    # the demo accounts without resetting them). Only touch known demo accounts
+    # — production users created via /register or /users won't be backfilled.
+    demo_seed_passwords = {
+        super_email: super_pw,
+        "admin@demo.school": "Admin@123",
+        "teacher@demo.school": "Teacher@123",
+        "parent@demo.school": "Parent@123",
+        "adaeze@demo.school": "Student@123",
+    }
+    for email_, pw_ in demo_seed_passwords.items():
+        await db.users.update_one(
+            {"email": email_, "auto_password_encrypted": {"$in": [None, ""]}},
+            {"$set": {
+                "auto_password_encrypted": encrypt_password(pw_),
+                "password_changed_by_user": False,
+            }},
+        )
+    # Also handle docs where the field doesn't exist at all
+    for email_, pw_ in demo_seed_passwords.items():
+        await db.users.update_one(
+            {"email": email_, "auto_password_encrypted": {"$exists": False}},
+            {"$set": {
+                "auto_password_encrypted": encrypt_password(pw_),
+                "password_changed_by_user": False,
+            }},
+        )

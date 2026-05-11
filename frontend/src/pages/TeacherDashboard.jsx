@@ -13,7 +13,8 @@ import { useAuth } from "@/lib/auth.jsx";
 import { api, formatApiError } from "@/lib/api";
 import { toast } from "sonner";
 import StarRating from "@/components/StarRating.jsx";
-import { Save, Plus, Trash2, FileText, CheckCircle2, Eye, Image as ImageIcon, X } from "lucide-react";
+import { Save, Plus, Trash2, FileText, CheckCircle2, Eye, Image as ImageIcon, X, FileSpreadsheet, Users } from "lucide-react";
+import BulkUploadDialog from "@/components/BulkUploadDialog.jsx";
 
 const SKILLS = ["Punctuality", "Attentiveness", "Neatness", "Honesty", "Sportsmanship", "Leadership"];
 const TERMS = ["1st Term", "2nd Term", "3rd Term"];
@@ -37,6 +38,14 @@ export default function TeacherDashboard() {
   const [examForm, setExamForm] = useState(_emptyExam());
   const [editingId, setEditingId] = useState(null);
   const [attemptsDlg, setAttemptsDlg] = useState(null); // exam_id
+  const [parentBulkOpen, setParentBulkOpen] = useState(false);
+
+  const myClasses = useMemo(() => {
+    const list = [];
+    if (user?.assigned_classes && user.assigned_classes.length) list.push(...user.assigned_classes);
+    else if (user?.assigned_class) list.push(user.assigned_class);
+    return Array.from(new Set(list));
+  }, [user]);
 
   const allowTrueFalse = (school?.school_type === "primary" || school?.school_type === "mixed");
 
@@ -234,6 +243,7 @@ export default function TeacherDashboard() {
           <TabsList>
             <TabsTrigger value="scores" data-testid="t-tab-scores">Score entry</TabsTrigger>
             <TabsTrigger value="cbt" data-testid="t-tab-cbt">CBT exams</TabsTrigger>
+            <TabsTrigger value="parents" data-testid="t-tab-parents">Parents</TabsTrigger>
           </TabsList>
 
           <TabsContent value="scores" className="mt-6">
@@ -390,8 +400,45 @@ export default function TeacherDashboard() {
               </Table>
             </div>
           </TabsContent>
+
+          <TabsContent value="parents" className="mt-6">
+            <div className="cs-card p-6">
+              <div className="flex items-start gap-3 mb-4">
+                <div className="w-11 h-11 rounded-lg cs-bg-blue text-white flex items-center justify-center shrink-0"><Users size={20} /></div>
+                <div className="flex-1">
+                  <h3 className="font-display font-semibold cs-text-navy text-lg">Bulk upload parents for your class{myClasses.length > 1 ? "es" : ""}</h3>
+                  <p className="text-sm text-slate-500 mt-1">
+                    Class teacher: <strong className="cs-text-navy">{user?.name}</strong>
+                    {myClasses.length > 0 && <> · Assigned to <strong className="cs-text-navy">{myClasses.join(", ")}</strong></>}
+                  </p>
+                </div>
+              </div>
+              <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900 mb-4">
+                <div className="font-medium mb-1">How this works</div>
+                <ul className="list-disc ml-5 space-y-0.5 text-[13px]">
+                  <li>Download the parents template, fill in parent name + email + your students' names and class.</li>
+                  <li>Upload it back — the system creates the parent login accounts.</li>
+                  <li>Only the school admin can see the generated passwords — they distribute to parents securely.</li>
+                  <li>Rows pointing to students <em>not on your class roster</em> will be skipped (you'll see the reasons).</li>
+                </ul>
+              </div>
+              <Button onClick={() => setParentBulkOpen(true)} className="cs-bg-green text-white hover:opacity-90 btn-anim" data-testid="teacher-bulk-parents-btn" disabled={myClasses.length === 0}>
+                <FileSpreadsheet size={16} className="mr-2" /> Upload parents for {myClasses.length === 1 ? myClasses[0] : "my class"}
+              </Button>
+              {myClasses.length === 0 && (
+                <p className="text-xs text-amber-700 mt-2">⚠️ You don't have any assigned classes yet — ask your school admin to assign one.</p>
+              )}
+            </div>
+          </TabsContent>
         </Tabs>
       </div>
+
+      <BulkUploadDialog
+        open={parentBulkOpen}
+        onOpenChange={setParentBulkOpen}
+        role="parent"
+        onUploaded={refresh}
+      />
 
       {/* Exam builder dialog */}
       <Dialog open={examDlg} onOpenChange={setExamDlg}>
