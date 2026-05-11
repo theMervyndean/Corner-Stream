@@ -75,6 +75,29 @@ Brand: Deep Navy #002147, Vibrant Green #28A745, Electric Blue #0056B3. Visuals 
 - ✅ **`/api/analytics/super`, `/api/analytics/school`, `/api/analytics/student/{id}`** — three aggregation endpoints with role-scoped data.
 - ✅ All 45/45 backend tests still passing. Frontend lint clean.
 
+## Phase-D1 implemented (May 2026 — User management v2 + bulk onboarding)
+- ✅ **Fernet password vault** (`backend/password_vault.py`) — admin-recoverable auto-passwords stored encrypted-at-rest with a key derived from `JWT_SECRET`. Strong 10-char generator avoids visually confusing chars.
+- ✅ **`POST /api/auth/change-password`** — every user (teacher / parent / student / admin) can change their own password from their dashboard. Wipes admin-recoverable copy + sets `password_changed_by_user=true`.
+- ✅ **`GET /api/users/{id}/reveal-password`** — admin reveals the *original* auto password until user changes it; returns 410 once they've changed it (industry-standard recovery flow).
+- ✅ **`POST /api/users/{id}/reset-password`** — admin generates a fresh auto-password (revealed once). Audit-logged.
+- ✅ **`POST /api/users/{id}/promote` & `/demote`** — admin grants admin-powers to a teacher/parent (they keep their primary role, gain `is_admin=true` flag). Cannot demote yourself or the primary school_admin. Last-admin deletion blocked.
+- ✅ **`auth_utils.require_roles` updated** — `is_admin=true` satisfies any `school_admin`-protected endpoint. `ProtectedRoute` updated to match on the frontend.
+- ✅ **Bulk uploads** (admin distributes credentials only — teachers see masked passwords):
+  - **`POST /api/users/bulk-teachers`** — admin only. Auto-generates passwords for blank cells.
+  - **`POST /api/users/bulk-parents`** — admin OR class teacher. Strict student-on-roster lookup (rows for unknown students skipped). Teachers restricted to their `assigned_classes`; passwords returned masked. Existing parent emails get linked (no duplicate user).
+  - **`POST /api/users/bulk-students`** with `with_login=true` (default) — admin only. Auto-creates student record AND a `firstname.lastname.<school-handle>@<handle>.school` login + auto-password. Auto-expands `school.classes` with any new class_name.
+- ✅ **Cleaned-up Excel templates** (`/api/templates/{parents,students,teachers,cbt-questions}.xlsx`) — single "Data" sheet with real sample rows only (no blank placeholder rows / stray helper text). Helper text moved to hover-tooltip comments on header cells + a separate "📖 Instructions" sheet.
+- ✅ **Frontend components**:
+  - `ChangePasswordDialog` — reusable, mounted in Navbar dropdown (works in all dashboards).
+  - `BulkUploadDialog` — used by school admin (teachers/students/parents) and class teachers (parents only).
+  - `CredentialsModal` — show-once table with per-row reveal + copy-to-clipboard + one-click Excel download.
+  - **Navbar** — user dropdown with Dashboard / Admin dashboard (for promoted users) / Change password / Sign out. "ADMIN POWERS" badge for promoted teachers/parents.
+  - **SchoolAdminDashboard Users tab** — redesigned with Bulk Teachers/Parents/Students + per-row Reveal / Reset / Promote / Demote / Delete actions and Auto vs User-set password badges.
+  - **TeacherDashboard** — new "Parents" tab for class teachers to bulk-onboard parents for their assigned class(es).
+- ✅ Seeded demo users now have their original passwords pre-encrypted in the vault — "Reveal" works on every demo account from day one.
+- ✅ **55/55 backend tests passing** (25 new Phase-D1 + 30 Phase A/B/C regression).
+
+
 ## Demo accounts (seeded)
 | Role | Email | Password |
 |---|---|---|
