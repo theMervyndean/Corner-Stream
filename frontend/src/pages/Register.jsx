@@ -14,7 +14,7 @@ export default function Register() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const [form, setForm] = useState({
-    school_name: "", principal_name: "", school_address: "", school_phone: "",
+    school_name: "", school_type: "secondary", principal_name: "", school_address: "", school_phone: "",
     name: "", email: "", password: "",
   });
   const [submitting, setSubmitting] = useState(false);
@@ -57,9 +57,36 @@ export default function Register() {
               <div className="eyebrow mb-3">SCHOOL DETAILS</div>
               <div className="grid sm:grid-cols-2 gap-4">
                 <div><Label htmlFor="sn">School name *</Label><Input id="sn" required value={form.school_name} onChange={(e) => setForm({ ...form, school_name: e.target.value })} data-testid="register-school-name" /></div>
+                <div>
+                  <Label>School type *</Label>
+                  <div className="grid grid-cols-3 gap-2 mt-1" data-testid="register-school-type-group">
+                    {[
+                      { v: "primary", label: "Primary" },
+                      { v: "secondary", label: "Secondary" },
+                      { v: "mixed", label: "Mixed (K-12)" },
+                    ].map(opt => (
+                      <button
+                        key={opt.v}
+                        type="button"
+                        onClick={() => setForm({ ...form, school_type: opt.v })}
+                        data-testid={`register-school-type-${opt.v}`}
+                        className={`h-10 rounded-lg border text-sm font-semibold transition btn-anim ${
+                          form.school_type === opt.v
+                            ? "cs-bg-navy text-white border-transparent"
+                            : "bg-white border-slate-200 text-slate-700 hover:border-slate-400"
+                        }`}
+                      >{opt.label}</button>
+                    ))}
+                  </div>
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    {form.school_type === "primary" && "Nursery 1-2, Primary 1-6. True/False CBT questions allowed."}
+                    {form.school_type === "secondary" && "JSS 1-3, SS 1-3. MCQ only."}
+                    {form.school_type === "mixed" && "Full K-12 (Nursery to SS3). All question types allowed."}
+                  </p>
+                </div>
                 <div><Label htmlFor="pn">Principal name</Label><Input id="pn" value={form.principal_name} onChange={(e) => setForm({ ...form, principal_name: e.target.value })} data-testid="register-principal" /></div>
-                <div className="sm:col-span-2"><Label htmlFor="sa">Address</Label><Input id="sa" placeholder="Street, City, State" value={form.school_address} onChange={(e) => setForm({ ...form, school_address: e.target.value })} data-testid="register-address" /></div>
                 <div><Label htmlFor="sp">Phone / WhatsApp</Label><Input id="sp" placeholder="+234..." value={form.school_phone} onChange={(e) => setForm({ ...form, school_phone: e.target.value })} data-testid="register-phone" /></div>
+                <div className="sm:col-span-2"><Label htmlFor="sa">Address</Label><Input id="sa" placeholder="Street, City, State" value={form.school_address} onChange={(e) => setForm({ ...form, school_address: e.target.value })} data-testid="register-address" /></div>
               </div>
             </div>
 

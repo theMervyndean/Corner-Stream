@@ -130,18 +130,24 @@ async def bulk_upload(file: UploadFile = File(...), user: dict = Depends(require
             raise HTTPException(status_code=400, detail=f"Missing required column: {r}")
 
     db = get_db()
+    # Load school's current class roster for validation/auto-expansion
+    school = await db.schools.find_one({"id": user["school_id"]}, {"_id": 0, "classes": 1})
+    school_classes = list((school or {}).get("classes") or [])
+    new_classes_added: List[str] = []
+
     inserted: List[dict] = []
     errors: List[str] = []
     for i, row in enumerate(rows[1:], start=2):
         record = dict(zip(headers, row))
         try:
+            class_name = str(record.get("class_name", "")).strip()
             doc = {
                 "id": new_id(),
                 "school_id": user["school_id"],
                 "name": str(record.get("name", "")).strip(),
                 "age": int(record.get("age") or 0),
                 "gender": str(record.get("gender", "")).strip(),
-                "class_name": str(record.get("class_name", "")).strip(),
+                "class_name": class_name,
                 "parent_email": (str(record.get("parent_email")).strip().lower() if record.get("parent_email") else None),
                 "passport_url": "",
                 "balance_due": float(record.get("balance_due") or 0),
@@ -150,13 +156,24 @@ async def bulk_upload(file: UploadFile = File(...), user: dict = Depends(require
             if not doc["name"] or not doc["class_name"]:
                 errors.append(f"Row {i}: missing name or class_name")
                 continue
+            # Auto-expand class roster if this is a new class name
+            if class_name and class_name not in school_classes:
+                school_classes.append(class_name)
+                new_classes_added.append(class_name)
             await db.students.insert_one(doc)
             doc.pop("_id", None)
             inserted.append(doc)
         except Exception as e:
             errors.append(f"Row {i}: {e}")
 
-    return {"inserted": len(inserted), "errors": errors, "students": inserted}
+    # Persist new classes back to school
+    if new_classes_added:
+        await db.schools.update_one(
+            {"id": user["school_id"]},
+            {"$set": {"classes": school_classes, "updated_at": now_iso()}},
+        )
+
+    return {"inserted": len(inserted), "errors": errors, "students": inserted, "new_classes_added": new_classes_added}
 
 
 

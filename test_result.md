@@ -208,16 +208,27 @@ backend:
 
 frontend:
   - task: "Frontend — Multi-class school registration, custom classes, CBT TF+image"
-    implemented: false
+    implemented: true
     working: "NA"
-    file: "frontend/src/pages/*"
+    file: "frontend/src/pages/Register.jsx, frontend/src/pages/SchoolAdminDashboard.jsx, frontend/src/pages/TeacherDashboard.jsx, frontend/src/pages/CBTTake.jsx, frontend/src/pages/CBTReview.jsx, backend/routers/students.py"
     stuck_count: 0
     priority: "high"
-    needs_retesting: false
+    needs_retesting: true
     status_history:
         -working: "NA"
         -agent: "main"
-        -comment: "Not started — will build after backend testing confirms green."
+        -comment: |
+          Frontend implementation complete:
+          1. Register page: school_type selector (Primary / Secondary / Mixed) with descriptive copy
+          2. SchoolAdminDashboard: new "Classes" tab — list classes, add custom (e.g., 'JSS 1 Crystal'), remove (blocked if students assigned, blocked if last)
+          3. School profile shows school_type badge
+          4. Student-add / Subject-add / Teacher-add dialogs use a Select dropdown bound to school.classes (no more free-text class)
+          5. TeacherDashboard CBT builder: per-question type toggle (MCQ / True-False), T/F disabled for Secondary, image attach (base64 ≤800KB) with preview + remove
+          6. CBTTake: renders image; T/F shows as 2 large buttons; MCQ retains A-D layout
+          7. CBTReview: shows attached image and T/F badge
+          8. Bulk Excel upload auto-expands the school's class roster with any new class_name encountered
+          
+          Screenshot verified: Register school-type selector; Classes tab with 7 classes (incl. 'JSS 1 Crystal'); Teacher CBT builder with T/F greyed for secondary + image attach button.
 
 metadata:
   created_by: "main_agent"

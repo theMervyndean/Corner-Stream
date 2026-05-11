@@ -15,7 +15,7 @@ import { toast } from "sonner";
 import {
   Users, Receipt, FileBarChart, ShieldCheck, Upload, Plus, ArrowRight,
   AlertTriangle, CreditCard, KeyRound, Image as ImageIcon, BookOpen, Trash2,
-  CheckCircle2, Circle, Download,
+  CheckCircle2, Circle, Download, GraduationCap,
 } from "lucide-react";
 import { ChartCard, BarSimple, DonutChart, GrowthArea } from "@/components/Charts.jsx";
 
@@ -64,6 +64,28 @@ export default function SchoolAdminDashboard() {
 
   // Passport upload
   const [passportDlg, setPassportDlg] = useState(null);
+
+  // Classes management
+  const [newClassName, setNewClassName] = useState("");
+  const classes = useMemo(() => school?.classes || [], [school]);
+  const addClass = async () => {
+    const name = newClassName.trim();
+    if (!name) { toast.error("Enter a class name"); return; }
+    try {
+      await api.post("/schools/me/classes", { class_name: name });
+      toast.success(`Added "${name}"`);
+      setNewClassName("");
+      refresh();
+    } catch (e) { toast.error(formatApiError(e.response?.data?.detail) || e.message); }
+  };
+  const removeClassName = async (name) => {
+    if (!window.confirm(`Remove "${name}" from your class roster?`)) return;
+    try {
+      await api.delete(`/schools/me/classes/${encodeURIComponent(name)}`);
+      toast.success(`Removed "${name}"`);
+      refresh();
+    } catch (e) { toast.error(formatApiError(e.response?.data?.detail) || e.message); }
+  };
 
   const refresh = async () => {
     try {
@@ -294,9 +316,10 @@ export default function SchoolAdminDashboard() {
 
         <Tabs value={tab} onValueChange={setTab} className="mt-10">
           <div className="overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0 scrollbar-hide">
-            <TabsList className="inline-flex w-max sm:grid sm:grid-cols-7 sm:w-full sm:max-w-4xl">
+            <TabsList className="inline-flex w-max sm:grid sm:grid-cols-8 sm:w-full sm:max-w-5xl">
               <TabsTrigger value="overview" data-testid="tab-overview">Overview</TabsTrigger>
               <TabsTrigger value="profile" data-testid="tab-profile">Profile</TabsTrigger>
+              <TabsTrigger value="classes" data-testid="tab-classes">Classes</TabsTrigger>
               <TabsTrigger value="users" data-testid="tab-users">Users</TabsTrigger>
               <TabsTrigger value="students" data-testid="tab-students">Students</TabsTrigger>
               <TabsTrigger value="subjects" data-testid="tab-subjects">Subjects</TabsTrigger>
@@ -392,6 +415,17 @@ export default function SchoolAdminDashboard() {
             <div className="cs-card p-6">
               <h3 className="font-display font-semibold cs-text-navy text-lg">School profile</h3>
               <p className="text-sm text-slate-500 mt-1">This information appears on report cards, the parent portal, and printed PDFs.</p>
+              <div className="mt-4 inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-100 border border-slate-200">
+                <GraduationCap size={14} className="cs-text-navy" />
+                <span className="text-xs font-semibold cs-text-navy">
+                  School type: <span className="capitalize">{school.school_type || "secondary"}</span>
+                </span>
+                <span className="text-[10px] text-slate-500">
+                  {school.school_type === "primary" && "· T/F questions allowed"}
+                  {school.school_type === "mixed" && "· K-12 · All question types allowed"}
+                  {(!school.school_type || school.school_type === "secondary") && "· MCQ only"}
+                </span>
+              </div>
               <div className="mt-6 grid md:grid-cols-[180px_1fr] gap-6">
                 <div>
                   <div className="aspect-square border rounded-lg overflow-hidden bg-slate-50 flex items-center justify-center">
@@ -413,6 +447,77 @@ export default function SchoolAdminDashboard() {
               </div>
               <div className="mt-6 flex justify-end">
                 <Button onClick={saveProfile} className="cs-bg-green text-white hover:opacity-90 rounded-full btn-anim" data-testid="profile-save">Save profile</Button>
+              </div>
+            </div>
+          </TabsContent>
+
+          {/* CLASSES TAB */}
+          <TabsContent value="classes" className="mt-6">
+            <div className="cs-card p-6">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div>
+                  <h3 className="font-display font-semibold cs-text-navy text-lg">Class roster</h3>
+                  <p className="text-sm text-slate-500 mt-1">
+                    Your school has <strong>{classes.length}</strong> class{classes.length !== 1 ? "es" : ""}.
+                    Add custom arms (e.g., <em>"Primary 1 Diamond"</em>, <em>"JSS 1 Crystal"</em>, <em>"SS 2 Science"</em>) as needed.
+                  </p>
+                </div>
+                <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-100 border border-slate-200">
+                  <GraduationCap size={14} className="cs-text-navy" />
+                  <span className="text-xs font-semibold cs-text-navy capitalize">{school.school_type || "secondary"} school</span>
+                </div>
+              </div>
+
+              <div className="mt-5 flex flex-col sm:flex-row gap-3">
+                <Input
+                  placeholder="New class name (e.g., JSS 1 Crystal)"
+                  value={newClassName}
+                  onChange={(e) => setNewClassName(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && addClass()}
+                  data-testid="add-class-input"
+                  className="flex-1"
+                />
+                <Button onClick={addClass} className="cs-bg-green text-white hover:opacity-90 rounded-full btn-anim" data-testid="add-class-btn">
+                  <Plus size={14} className="mr-1" /> Add class
+                </Button>
+              </div>
+
+              <div className="mt-6 grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {classes.map((cn) => {
+                  const studentCount = students.filter((s) => s.class_name === cn).length;
+                  return (
+                    <div key={cn} className="flex items-center justify-between p-3 rounded-lg border bg-white" data-testid={`class-row-${cn}`}>
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-9 h-9 rounded-md cs-bg-navy text-white flex items-center justify-center flex-shrink-0">
+                          <GraduationCap size={16} />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="font-semibold cs-text-navy truncate">{cn}</div>
+                          <div className="text-[11px] text-slate-500">{studentCount} student{studentCount !== 1 ? "s" : ""}</div>
+                        </div>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        onClick={() => removeClassName(cn)}
+                        data-testid={`class-del-${cn}`}
+                        disabled={studentCount > 0}
+                        title={studentCount > 0 ? "Cannot remove — students assigned" : "Remove class"}
+                      >
+                        <Trash2 size={12} />
+                      </Button>
+                    </div>
+                  );
+                })}
+                {classes.length === 0 && (
+                  <div className="col-span-full text-center text-slate-500 py-8">
+                    No classes yet. Add one above.
+                  </div>
+                )}
+              </div>
+
+              <div className="mt-6 text-xs text-slate-500">
+                💡 Tip: Classes you list here populate the dropdowns when adding students, assigning teachers, or building subjects.
               </div>
             </div>
           </TabsContent>
@@ -619,7 +724,16 @@ export default function SchoolAdminDashboard() {
           <DialogHeader><DialogTitle>Add student</DialogTitle></DialogHeader>
           <div className="grid grid-cols-2 gap-3">
             <div><Label>Name</Label><Input value={newStudent.name} onChange={(e) => setNewStudent({ ...newStudent, name: e.target.value })} data-testid="ns-name" /></div>
-            <div><Label>Class</Label><Input value={newStudent.class_name} onChange={(e) => setNewStudent({ ...newStudent, class_name: e.target.value })} data-testid="ns-class" /></div>
+            <div>
+              <Label>Class</Label>
+              <Select value={newStudent.class_name} onValueChange={(v) => setNewStudent({ ...newStudent, class_name: v })}>
+                <SelectTrigger data-testid="ns-class"><SelectValue placeholder="Select class…" /></SelectTrigger>
+                <SelectContent>
+                  {classes.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              {classes.length === 0 && <p className="text-[11px] text-amber-600 mt-1">No classes yet — add them on the Classes tab.</p>}
+            </div>
             <div><Label>Age</Label><Input type="number" value={newStudent.age} onChange={(e) => setNewStudent({ ...newStudent, age: parseInt(e.target.value || "0") })} data-testid="ns-age" /></div>
             <div>
               <Label>Gender</Label>
@@ -672,7 +786,15 @@ export default function SchoolAdminDashboard() {
         <DialogContent>
           <DialogHeader><DialogTitle>{subjForm.class_name && classSubjects.find((c) => c.class_name === subjForm.class_name) ? "Edit class subjects" : "Add class subjects"}</DialogTitle></DialogHeader>
           <div className="space-y-3">
-            <div><Label>Class name (e.g., JSS 1)</Label><Input value={subjForm.class_name} onChange={(e) => setSubjForm({ ...subjForm, class_name: e.target.value })} data-testid="subj-class" /></div>
+            <div>
+              <Label>Class name</Label>
+              <Select value={subjForm.class_name} onValueChange={(v) => setSubjForm({ ...subjForm, class_name: v })}>
+                <SelectTrigger data-testid="subj-class"><SelectValue placeholder="Select class…" /></SelectTrigger>
+                <SelectContent>
+                  {classes.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
             <div>
               <Label>Subjects (one per line)</Label>
               <textarea
@@ -734,7 +856,16 @@ export default function SchoolAdminDashboard() {
             <div><Label>Email</Label><Input type="email" value={newUser.email} onChange={(e) => setNewUser({ ...newUser, email: e.target.value })} data-testid="nu-email" /></div>
             <div><Label>Password</Label><Input value={newUser.password} onChange={(e) => setNewUser({ ...newUser, password: e.target.value })} data-testid="nu-password" /></div>
             {newUser.role === "teacher" && (
-              <div><Label>Assigned class (optional)</Label><Input placeholder="e.g., JSS 1" value={newUser.assigned_class} onChange={(e) => setNewUser({ ...newUser, assigned_class: e.target.value })} data-testid="nu-class" /></div>
+              <div>
+                <Label>Assigned class (optional)</Label>
+                <Select value={newUser.assigned_class || "__none__"} onValueChange={(v) => setNewUser({ ...newUser, assigned_class: v === "__none__" ? "" : v })}>
+                  <SelectTrigger data-testid="nu-class"><SelectValue placeholder="No class assigned" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">— None —</SelectItem>
+                    {classes.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
             )}
             <p className="text-xs text-slate-500">Share these credentials with the user. They sign in at the main login page.</p>
           </div>

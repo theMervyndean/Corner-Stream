@@ -13,7 +13,7 @@ import { useAuth } from "@/lib/auth.jsx";
 import { api, formatApiError } from "@/lib/api";
 import { toast } from "sonner";
 import StarRating from "@/components/StarRating.jsx";
-import { Save, Plus, Trash2, FileText, CheckCircle2, Eye } from "lucide-react";
+import { Save, Plus, Trash2, FileText, CheckCircle2, Eye, Image as ImageIcon, X } from "lucide-react";
 
 const SKILLS = ["Punctuality", "Attentiveness", "Neatness", "Honesty", "Sportsmanship", "Leadership"];
 const TERMS = ["1st Term", "2nd Term", "3rd Term"];
@@ -29,6 +29,7 @@ export default function TeacherDashboard() {
   const [skillMap, setSkillMap] = useState({});
   const [saving, setSaving] = useState(false);
   const [classSubjects, setClassSubjects] = useState({});
+  const [school, setSchool] = useState(null);
 
   // CBT
   const [exams, setExams] = useState([]);
@@ -37,23 +38,27 @@ export default function TeacherDashboard() {
   const [editingId, setEditingId] = useState(null);
   const [attemptsDlg, setAttemptsDlg] = useState(null); // exam_id
 
+  const allowTrueFalse = (school?.school_type === "primary" || school?.school_type === "mixed");
+
   function _emptyExam() {
     return {
       title: "", class_name: "", subject: "", term: "1st Term", year: "2025/2026",
       duration_min: 15,
-      questions: [{ question: "", options: ["", "", "", ""], correct_idx: 0 }],
+      questions: [{ type: "mcq", question: "", options: ["", "", "", ""], correct_idx: 0, image_url: "" }],
     };
   }
 
   const refresh = async () => {
     try {
-      const [stRes, exRes, sjRes] = await Promise.all([
+      const [stRes, exRes, sjRes, schRes] = await Promise.all([
         api.get("/students"),
         api.get("/cbt/exams"),
         api.get("/subjects"),
+        api.get("/schools/me").catch(() => ({ data: { school: {} } })),
       ]);
       setStudents(stRes.data.students || []);
       setExams(exRes.data.exams || []);
+      setSchool(schRes.data.school || null);
       const map = {};
       (sjRes.data.class_subjects || []).forEach((cs) => { map[cs.class_name] = cs.subjects; });
       setClassSubjects(map);
@@ -117,7 +122,13 @@ export default function TeacherDashboard() {
     setExamForm({
       title: e.title, class_name: e.class_name, subject: e.subject,
       term: e.term, year: e.year, duration_min: e.duration_min,
-      questions: e.questions.map((q) => ({ question: q.question, options: [...q.options], correct_idx: q.correct_idx })),
+      questions: e.questions.map((q) => ({
+        type: q.type || "mcq",
+        question: q.question,
+        options: [...(q.options || (q.type === "true_false" ? ["True", "False"] : ["", "", "", ""]))],
+        correct_idx: q.correct_idx,
+        image_url: q.image_url || "",
+      })),
     });
     setExamDlg(true);
   };
@@ -132,7 +143,23 @@ export default function TeacherDashboard() {
     next[qi].options[oi] = val;
     setExamForm({ ...examForm, questions: next });
   };
-  const addQuestion = () => setExamForm({ ...examForm, questions: [...examForm.questions, { question: "", options: ["", "", "", ""], correct_idx: 0 }] });
+  const setQuestionType = (qi, newType) => {
+    const next = [...examForm.questions];
+    if (newType === "true_false") {
+      next[qi] = { ...next[qi], type: "true_false", options: ["True", "False"], correct_idx: next[qi].correct_idx > 1 ? 0 : next[qi].correct_idx };
+    } else {
+      next[qi] = { ...next[qi], type: "mcq", options: ["", "", "", ""], correct_idx: 0 };
+    }
+    setExamForm({ ...examForm, questions: next });
+  };
+  const uploadQuestionImage = (qi, file) => {
+    if (!file) return;
+    if (file.size > 800 * 1024) { toast.error("Image must be under 800KB"); return; }
+    const reader = new FileReader();
+    reader.onload = () => updateQuestion(qi, { image_url: reader.result });
+    reader.readAsDataURL(file);
+  };
+  const addQuestion = () => setExamForm({ ...examForm, questions: [...examForm.questions, { type: "mcq", question: "", options: ["", "", "", ""], correct_idx: 0, image_url: "" }] });
   const removeQuestion = (qi) => setExamForm({ ...examForm, questions: examForm.questions.filter((_, i) => i !== qi) });
 
   const submitExam = async () => {
@@ -143,8 +170,9 @@ export default function TeacherDashboard() {
     if (!examForm.questions.length) { toast.error("Add at least one question"); return; }
     for (let i = 0; i < examForm.questions.length; i++) {
       const q = examForm.questions[i];
-      if (!q.question.trim() || q.options.some((o) => !o.trim())) {
-        toast.error(`Question ${i + 1}: fill all options and the question text`);
+      if (!q.question.trim()) { toast.error(`Question ${i + 1}: question text required`); return; }
+      if (q.type === "mcq" && q.options.some((o) => !o.trim())) {
+        toast.error(`Question ${i + 1}: fill all options`);
         return;
       }
     }
@@ -358,7 +386,7 @@ export default function TeacherDashboard() {
               <Label>Class</Label>
               <Select value={examForm.class_name} onValueChange={(v) => setExamForm({ ...examForm, class_name: v, subject: "" })}>
                 <SelectTrigger data-testid="ex-class"><SelectValue placeholder="Pick class" /></SelectTrigger>
-                <SelectContent>{Object.keys(classSubjects).map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
+                <SelectContent>{(school?.classes || Object.keys(classSubjects)).map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
               </Select>
             </div>
             <div>
@@ -382,20 +410,73 @@ export default function TeacherDashboard() {
           <div className="mt-4 space-y-4">
             {examForm.questions.map((q, qi) => (
               <div key={qi} className="border rounded-lg p-4 space-y-3" data-testid={`ex-q-${qi}`}>
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
                   <div className="text-sm font-bold cs-text-navy">Question {qi + 1}</div>
-                  <Button size="sm" variant="ghost" onClick={() => removeQuestion(qi)} data-testid={`ex-q-remove-${qi}`}><Trash2 size={14} /></Button>
+                  <div className="flex items-center gap-2">
+                    <div className="inline-flex rounded-md border overflow-hidden text-xs" data-testid={`ex-q-type-${qi}`}>
+                      <button
+                        type="button"
+                        onClick={() => setQuestionType(qi, "mcq")}
+                        className={`px-3 py-1.5 font-semibold ${q.type !== "true_false" ? "cs-bg-navy text-white" : "bg-white text-slate-700"}`}
+                        data-testid={`ex-q-type-mcq-${qi}`}
+                      >Multiple choice</button>
+                      <button
+                        type="button"
+                        onClick={() => setQuestionType(qi, "true_false")}
+                        disabled={!allowTrueFalse}
+                        title={!allowTrueFalse ? "True/False is only available for Primary or Mixed schools" : ""}
+                        className={`px-3 py-1.5 font-semibold border-l ${q.type === "true_false" ? "cs-bg-navy text-white" : "bg-white text-slate-700"} ${!allowTrueFalse ? "opacity-40 cursor-not-allowed" : ""}`}
+                        data-testid={`ex-q-type-tf-${qi}`}
+                      >True / False</button>
+                    </div>
+                    <Button size="sm" variant="ghost" onClick={() => removeQuestion(qi)} data-testid={`ex-q-remove-${qi}`}><Trash2 size={14} /></Button>
+                  </div>
                 </div>
                 <Textarea rows={2} value={q.question} onChange={(e) => updateQuestion(qi, { question: e.target.value })} placeholder="Question text" data-testid={`ex-q-text-${qi}`} />
-                <div className="grid grid-cols-2 gap-2">
-                  {q.options.map((opt, oi) => (
-                    <div key={oi} className={`flex items-center gap-2 p-2 rounded border ${q.correct_idx === oi ? "border-[#28A745] bg-green-50" : ""}`}>
-                      <button type="button" onClick={() => updateQuestion(qi, { correct_idx: oi })} className={`w-7 h-7 rounded-full text-xs font-bold flex items-center justify-center ${q.correct_idx === oi ? "cs-bg-green text-white" : "bg-slate-100 text-slate-600"}`} title="Mark as correct" data-testid={`ex-q-correct-${qi}-${oi}`}>{String.fromCharCode(65 + oi)}</button>
-                      <Input value={opt} onChange={(e) => updateOption(qi, oi, e.target.value)} placeholder={`Option ${String.fromCharCode(65 + oi)}`} data-testid={`ex-q-opt-${qi}-${oi}`} />
+
+                {/* Image attachment */}
+                <div className="flex items-center gap-3">
+                  {q.image_url ? (
+                    <div className="relative">
+                      <img src={q.image_url} alt="" className="h-20 w-20 object-cover rounded border" />
+                      <button type="button" onClick={() => updateQuestion(qi, { image_url: "" })} className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-0.5" data-testid={`ex-q-img-remove-${qi}`}><X size={12} /></button>
                     </div>
-                  ))}
+                  ) : (
+                    <label className="inline-flex items-center gap-2 px-3 py-2 rounded-md border border-dashed border-slate-300 text-xs text-slate-600 cursor-pointer hover:bg-slate-50">
+                      <ImageIcon size={14} />
+                      Attach image (optional, ≤800KB)
+                      <input type="file" accept="image/*" className="hidden" onChange={(e) => uploadQuestionImage(qi, e.target.files?.[0])} data-testid={`ex-q-img-${qi}`} />
+                    </label>
+                  )}
                 </div>
-                <div className="text-xs text-slate-500">Correct answer: <strong>{String.fromCharCode(65 + q.correct_idx)}</strong></div>
+
+                {q.type === "true_false" ? (
+                  <div className="grid grid-cols-2 gap-2">
+                    {["True", "False"].map((label, oi) => (
+                      <button
+                        key={oi}
+                        type="button"
+                        onClick={() => updateQuestion(qi, { correct_idx: oi })}
+                        className={`p-3 rounded border-2 text-sm font-semibold transition ${q.correct_idx === oi ? "border-[#28A745] bg-green-50 cs-text-green" : "border-slate-200 bg-white text-slate-700 hover:border-slate-400"}`}
+                        data-testid={`ex-q-tf-${qi}-${oi}`}
+                      >
+                        {q.correct_idx === oi && "✓ "}{label}
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-2">
+                    {q.options.map((opt, oi) => (
+                      <div key={oi} className={`flex items-center gap-2 p-2 rounded border ${q.correct_idx === oi ? "border-[#28A745] bg-green-50" : ""}`}>
+                        <button type="button" onClick={() => updateQuestion(qi, { correct_idx: oi })} className={`w-7 h-7 rounded-full text-xs font-bold flex items-center justify-center ${q.correct_idx === oi ? "cs-bg-green text-white" : "bg-slate-100 text-slate-600"}`} title="Mark as correct" data-testid={`ex-q-correct-${qi}-${oi}`}>{String.fromCharCode(65 + oi)}</button>
+                        <Input value={opt} onChange={(e) => updateOption(qi, oi, e.target.value)} placeholder={`Option ${String.fromCharCode(65 + oi)}`} data-testid={`ex-q-opt-${qi}-${oi}`} />
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div className="text-xs text-slate-500">
+                  Correct: <strong>{q.type === "true_false" ? (q.correct_idx === 0 ? "True" : "False") : String.fromCharCode(65 + q.correct_idx)}</strong>
+                </div>
               </div>
             ))}
             <Button variant="outline" onClick={addQuestion} className="w-full" data-testid="ex-add-q"><Plus size={14} className="mr-1" /> Add question</Button>

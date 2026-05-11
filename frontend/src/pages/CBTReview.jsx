@@ -60,8 +60,12 @@ export default function CBTReview() {
                     {isCorrect ? <CheckCircle2 size={20} className="cs-text-green" /> : <XCircle size={20} className="text-red-500" />}
                   </div>
                   <div className="flex-1">
-                    <div className="text-xs uppercase tracking-wider cs-text-blue font-bold">Question {qi + 1}</div>
+                    <div className="text-xs uppercase tracking-wider cs-text-blue font-bold flex items-center gap-2">
+                      <span>Question {qi + 1}</span>
+                      {q.type === "true_false" && <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 text-[9px]">T/F</span>}
+                    </div>
                     <div className="font-medium cs-text-navy mt-1">{q.question}</div>
+                    {q.image_url && <img src={q.image_url} alt="" className="mt-3 max-h-56 max-w-full rounded border" />}
                     <div className="mt-3 space-y-2">
                       {q.options.map((opt, oi) => {
                         const youPicked = myAnswer === oi;

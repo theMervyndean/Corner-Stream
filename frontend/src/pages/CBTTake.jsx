@@ -135,11 +135,31 @@ export default function CBTTake() {
       <div className="max-w-5xl mx-auto px-6 py-8 grid lg:grid-cols-[1fr_220px] gap-6">
         {/* Question card */}
         <div className="cs-card p-7" data-testid="cbt-question">
-          <div className="text-xs uppercase tracking-wider cs-text-blue font-bold">Question {idx + 1} of {exam.questions.length}</div>
+          <div className="text-xs uppercase tracking-wider cs-text-blue font-bold flex items-center gap-2">
+            <span>Question {idx + 1} of {exam.questions.length}</span>
+            {q.type === "true_false" && (
+              <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[10px] font-bold">TRUE / FALSE</span>
+            )}
+          </div>
           <h2 className="font-display text-xl font-semibold cs-text-navy mt-2 leading-snug">{q.question}</h2>
-          <div className="mt-6 space-y-3">
+          {q.image_url && (
+            <div className="mt-4">
+              <img src={q.image_url} alt="" className="max-h-72 max-w-full rounded-lg border" data-testid={`cbt-q-image-${idx}`} />
+            </div>
+          )}
+          <div className={`mt-6 ${q.type === "true_false" ? "grid grid-cols-2 gap-3" : "space-y-3"}`}>
             {q.options.map((opt, oi) => {
               const sel = answers[idx] === oi;
+              if (q.type === "true_false") {
+                return (
+                  <button
+                    key={oi}
+                    onClick={() => setAnswer(idx, oi)}
+                    className={`p-5 rounded-lg border-2 text-center font-display text-lg font-bold transition-all ${sel ? "border-[#0056B3] bg-blue-50 cs-text-navy" : "border-slate-200 hover:border-slate-300 bg-white text-slate-700"}`}
+                    data-testid={`cbt-option-${idx}-${oi}`}
+                  >{opt}</button>
+                );
+              }
               return (
                 <button
                   key={oi}
