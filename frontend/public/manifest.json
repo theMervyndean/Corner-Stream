@@ -15,7 +15,7 @@
       "purpose": "any"
     }
   ],
-  "start_url": "/",
+  "start_url": "/login?source=pwa",
   "display": "standalone",
   "theme_color": "#002147",
   "background_color": "#F8FAFC",

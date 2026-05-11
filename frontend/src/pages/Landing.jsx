@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import Navbar from "@/components/Navbar.jsx";
 import { Button } from "@/components/ui/button";
@@ -45,6 +45,17 @@ export default function Landing() {
   const navigate = useNavigate();
   const [duration, setDuration] = useState("full_session");
   useReveal();
+
+  // Skip the marketing landing when launched as an installed PWA (home-screen app)
+  useEffect(() => {
+    const isStandalone =
+      window.matchMedia("(display-mode: standalone)").matches ||
+      window.navigator.standalone === true ||
+      document.referrer.startsWith("android-app://");
+    if (isStandalone) {
+      navigate("/login", { replace: true });
+    }
+  }, [navigate]);
 
   const tiers = useMemo(
     () => Object.entries(PRICING).map(([key, t]) => {

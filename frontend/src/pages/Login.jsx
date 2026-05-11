@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import Navbar from "@/components/Navbar.jsx";
 import { Button } from "@/components/ui/button";
@@ -17,11 +17,18 @@ const ROLE_DASH = {
 };
 
 export default function Login() {
-  const { login } = useAuth();
+  const { login, user } = useAuth();
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
+
+  // If already authenticated (e.g., PWA launch with valid session), go straight to dashboard
+  useEffect(() => {
+    if (user && user.role) {
+      navigate(ROLE_DASH[user.role] || "/", { replace: true });
+    }
+  }, [user, navigate]);
 
   const submit = async (e) => {
     e.preventDefault();
@@ -59,7 +66,10 @@ export default function Login() {
             </Button>
           </form>
           <div className="text-sm text-slate-500 mt-6 text-center">
-            New to Corner Streams? <Link to="/register" className="cs-text-blue font-semibold">Create account</Link>
+            New school? <Link to="/register" className="cs-text-blue font-semibold underline">Register your school</Link>
+          </div>
+          <div className="mt-3 text-[11px] text-slate-400 text-center leading-relaxed">
+            👨‍👩‍👧 <span className="font-medium">Parents, teachers and students</span> sign in with the email & password<br/>provided by your school's admin.
           </div>
           <div className="mt-6 text-xs text-slate-400 border-t pt-4">
             <div className="font-semibold cs-text-navy mb-2 text-sm">Demo accounts</div>
