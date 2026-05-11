@@ -48,7 +48,7 @@
   ],
   "action_items": [
     "Fix /api/payments/checkout/status/{session_id} — wrap stripe_checkout.get_checkout_status() in try/except CheckoutError and either upgrade emergentintegrations or fall back to retrieving session status directly via stripe SDK and coercing metadata to dict before constructing CheckoutStatusResponse. Without this, paid Stripe checkouts will not activate subscriptions.",
-    "Update backend/.env FRONTEND_URL to 'https://digital-results-6.preview.emergentagent.com' so CORS allow_origins matches the real frontend host (esp. for cookie-based auth).",
+    "Update backend/.env FRONTEND_URL to 'https://cs-assessment-demo.preview.emergentagent.com' so CORS allow_origins matches the real frontend host (esp. for cookie-based auth).",
     "Add data-testid attributes across all interactive elements (login form, register form, contact form, parent portal Result Checker buttons, report-card actions, SuperAdmin kill-switch and password override dialog, Stripe 'Choose plan' buttons, Pricing toggle).",
     "Optionally seed an initial scores set for Emeka so admins can preview a debt-locked report after they clear the balance."
   ],
