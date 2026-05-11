@@ -6,7 +6,7 @@ import requests
 import pytest
 import openpyxl
 
-BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "https://cs-assessment-demo.preview.emergentagent.com").rstrip("/")
+BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "https://school-admin-hub-62.preview.emergentagent.com").rstrip("/")
 API = f"{BASE_URL}/api"
 
 SUPER = ("super@cornerstreams.com", "Super@123")
