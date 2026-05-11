@@ -1,1 +1,14 @@
 .App { min-height: 100vh; }
+
+/* Install prompt animations */
+@keyframes cs-bounce-down {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(6px); }
+}
+.cs-bounce-down { animation: cs-bounce-down 1.2s ease-in-out infinite; }
+
+@keyframes cs-slide-up {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.cs-ios-banner-anim { animation: cs-slide-up 0.35s ease-out; }
