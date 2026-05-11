@@ -1,18 +1,44 @@
-"""CBT (Computer-Based Testing) router — MCQ exams + attempts + auto-grade."""
+"""CBT (Computer-Based Testing) router — MCQ + True/False exams + attempts + auto-grade."""
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
-from typing import List, Optional
-from db import get_db, new_id, now_iso, _calc_grade
+from pydantic import BaseModel, Field, model_validator
+from typing import List, Optional, Literal
+from db import get_db, new_id, now_iso, _calc_grade, allows_true_false
 from auth_utils import get_current_user, require_roles
 
 router = APIRouter(prefix="/cbt", tags=["cbt"])
 
 
 # ---------- Models ----------
-class MCQ(BaseModel):
-    question: str
-    options: List[str] = Field(min_length=2, max_length=6)
+class Question(BaseModel):
+    """Supports two types:
+    - 'mcq': 2-6 options, correct_idx 0..n-1
+    - 'true_false': options auto-set to ['True','False']; correct_idx 0 (True) or 1 (False)
+    Optional image_url (base64 data URL) attached to the question."""
+    type: Literal["mcq", "true_false"] = "mcq"
+    question: str = Field(min_length=1)
+    options: Optional[List[str]] = None
     correct_idx: int = Field(ge=0)
+    image_url: Optional[str] = ""
+
+    @model_validator(mode="after")
+    def _check(self):
+        if self.type == "true_false":
+            # Normalize options for true_false
+            self.options = ["True", "False"]
+            if self.correct_idx not in (0, 1):
+                raise ValueError("true_false correct_idx must be 0 (True) or 1 (False)")
+        else:  # mcq
+            opts = self.options or []
+            if len(opts) < 2 or len(opts) > 6:
+                raise ValueError("MCQ must have between 2 and 6 options")
+            if self.correct_idx >= len(opts):
+                raise ValueError("correct_idx out of range")
+            self.options = opts
+        return self
+
+
+# Back-compat alias for any legacy imports
+MCQ = Question
 
 
 class ExamIn(BaseModel):
@@ -22,13 +48,13 @@ class ExamIn(BaseModel):
     term: str
     year: str
     duration_min: int = Field(ge=1, le=240)
-    questions: List[MCQ]
+    questions: List[Question]
 
 
 class ExamUpdate(BaseModel):
     title: Optional[str] = None
     duration_min: Optional[int] = None
-    questions: Optional[List[MCQ]] = None
+    questions: Optional[List[Question]] = None
     published: Optional[bool] = None
 
 
@@ -39,8 +65,29 @@ class SubmitIn(BaseModel):
 # ---------- Helpers ----------
 def _strip_correct(exam: dict) -> dict:
     out = {**exam}
-    out["questions"] = [{"question": q["question"], "options": q["options"]} for q in exam.get("questions", [])]
+    out["questions"] = [
+        {
+            "question": q["question"],
+            "options": q.get("options") or (["True", "False"] if q.get("type") == "true_false" else []),
+            "type": q.get("type", "mcq"),
+            "image_url": q.get("image_url", ""),
+        }
+        for q in exam.get("questions", [])
+    ]
     return out
+
+
+async def _enforce_question_type_rules(db, school_id: str, questions: list):
+    """Block true_false unless the school is Primary or Mixed."""
+    has_tf = any((q.get("type") if isinstance(q, dict) else q.type) == "true_false" for q in questions)
+    if not has_tf:
+        return
+    school = await db.schools.find_one({"id": school_id}, {"_id": 0, "school_type": 1})
+    if not school or not allows_true_false(school.get("school_type")):
+        raise HTTPException(
+            status_code=400,
+            detail="True/False questions are only available for Primary or Mixed schools.",
+        )
 
 
 async def _student_record_for_user(db, user: dict) -> Optional[dict]:
@@ -88,14 +135,13 @@ async def _upsert_score_from_cbt(db, student: dict, exam: dict, percent: float, 
 # ---------- Exam CRUD (teacher/school_admin) ----------
 @router.post("/exams")
 async def create_exam(payload: ExamIn, user: dict = Depends(require_roles("teacher", "school_admin", "super_admin"))):
-    # Validate correct_idx within bounds
-    for i, q in enumerate(payload.questions):
-        if q.correct_idx >= len(q.options):
-            raise HTTPException(status_code=400, detail=f"Question {i + 1}: correct_idx out of range")
     db = get_db()
+    # Enforce true_false rule against the school's type
+    school_id = user["school_id"]
+    await _enforce_question_type_rules(db, school_id, payload.questions)
     doc = {
         "id": new_id(),
-        "school_id": user["school_id"],
+        "school_id": school_id,
         "title": payload.title,
         "class_name": payload.class_name,
         "subject": payload.subject,
@@ -186,6 +232,8 @@ async def update_exam(exam_id: str, payload: ExamUpdate,
         raise HTTPException(status_code=403, detail="Forbidden")
     update = {k: v for k, v in payload.model_dump().items() if v is not None}
     if "questions" in update:
+        # Re-validate true/false rule against school type
+        await _enforce_question_type_rules(db, exam["school_id"], update["questions"])
         update["questions"] = [q if isinstance(q, dict) else q.model_dump() for q in update["questions"]]
     update["updated_at"] = now_iso()
     await db.cbt_exams.update_one({"id": exam_id}, {"$set": update})

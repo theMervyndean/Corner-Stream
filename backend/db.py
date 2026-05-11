@@ -42,6 +42,38 @@ def verify_password(plain: str, hashed: str) -> bool:
         return False
 
 
+# ---------- School-type & class roster defaults ----------
+SCHOOL_TYPES = ("primary", "secondary", "mixed")
+
+DEFAULT_CLASSES_BY_TYPE = {
+    "primary": [
+        "Nursery 1", "Nursery 2",
+        "Primary 1", "Primary 2", "Primary 3",
+        "Primary 4", "Primary 5", "Primary 6",
+    ],
+    "secondary": [
+        "JSS 1", "JSS 2", "JSS 3",
+        "SS 1", "SS 2", "SS 3",
+    ],
+    "mixed": [
+        "Nursery 1", "Nursery 2",
+        "Primary 1", "Primary 2", "Primary 3",
+        "Primary 4", "Primary 5", "Primary 6",
+        "JSS 1", "JSS 2", "JSS 3",
+        "SS 1", "SS 2", "SS 3",
+    ],
+}
+
+
+def default_classes(school_type: str) -> list[str]:
+    return list(DEFAULT_CLASSES_BY_TYPE.get(school_type, DEFAULT_CLASSES_BY_TYPE["secondary"]))
+
+
+def allows_true_false(school_type: str | None) -> bool:
+    """True/False CBT questions are only allowed for Primary or Mixed schools."""
+    return (school_type or "").lower() in ("primary", "mixed")
+
+
 def _calc_grade(total: int) -> str:
     if total >= 75:
         return "A"
@@ -92,6 +124,8 @@ async def seed_demo_data():
         await db.schools.insert_one({
             "id": demo_school_id,
             "name": "Sunrise Academy",
+            "school_type": "secondary",
+            "classes": default_classes("secondary"),
             "principal_name": "Mrs. Adaeze Okonkwo",
             "address": "12 Ahmadu Bello Way, Ikeja, Lagos",
             "phone": "+2348012345678",
@@ -101,6 +135,16 @@ async def seed_demo_data():
             "subscription_expires_at": (datetime.now(timezone.utc) + timedelta(days=270)).isoformat(),
             "created_at": now_iso(),
         })
+    else:
+        # Backfill school_type and classes for existing demo school
+        existing = await db.schools.find_one({"id": demo_school_id})
+        updates = {}
+        if not existing.get("school_type"):
+            updates["school_type"] = "secondary"
+        if not existing.get("classes"):
+            updates["classes"] = default_classes("secondary")
+        if updates:
+            await db.schools.update_one({"id": demo_school_id}, {"$set": updates})
 
     # School admin
     if not await db.users.find_one({"email": "admin@demo.school"}):
@@ -211,3 +255,25 @@ async def seed_demo_data():
             ],
             "published": True, "created_by": teacher_id, "created_at": now_iso(),
         })
+
+    # Backfill: any existing school missing school_type/classes gets defaults
+    async for sch in db.schools.find({"$or": [{"school_type": {"$exists": False}}, {"classes": {"$exists": False}}]}):
+        st = sch.get("school_type") or "secondary"
+        await db.schools.update_one(
+            {"id": sch["id"]},
+            {"$set": {
+                "school_type": st,
+                "classes": sch.get("classes") or default_classes(st),
+            }},
+        )
+
+    # Backfill: questions on existing CBT exams without 'type' default to 'mcq'
+    async for ex in db.cbt_exams.find({"questions.type": {"$exists": False}}):
+        new_qs = []
+        for q in ex.get("questions", []):
+            if "type" not in q:
+                q["type"] = "mcq"
+            if "image_url" not in q:
+                q["image_url"] = ""
+            new_qs.append(q)
+        await db.cbt_exams.update_one({"id": ex["id"]}, {"$set": {"questions": new_qs}})

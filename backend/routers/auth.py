@@ -1,8 +1,8 @@
 """Auth router."""
 from fastapi import APIRouter, HTTPException, Response, Depends
 from pydantic import BaseModel, EmailStr, Field
-from typing import Optional
-from db import get_db, hash_password, verify_password, new_id, now_iso
+from typing import Optional, Literal
+from db import get_db, hash_password, verify_password, new_id, now_iso, default_classes
 from auth_utils import create_access_token, set_auth_cookie, clear_auth_cookie, get_current_user
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -13,6 +13,7 @@ class RegisterIn(BaseModel):
     password: str = Field(min_length=6)
     name: str
     school_name: str
+    school_type: Literal["primary", "secondary", "mixed"] = "secondary"
     username: Optional[str] = Field(default=None, pattern=r"^[a-zA-Z0-9_]{3,30}$")
     principal_name: Optional[str] = None
     school_phone: Optional[str] = None
@@ -53,6 +54,8 @@ async def register(payload: RegisterIn, response: Response):
     await db.schools.insert_one({
         "id": school_id,
         "name": payload.school_name,
+        "school_type": payload.school_type,
+        "classes": default_classes(payload.school_type),
         "principal_name": payload.principal_name or payload.name,
         "address": payload.school_address or "",
         "phone": payload.school_phone or "",
@@ -121,11 +124,3 @@ async def logout(response: Response):
 @router.get("/me")
 async def me(user: dict = Depends(get_current_user)):
     return {"user": _user_public(user)}
-
-
-@router.get("/schools-public")
-async def list_schools_public():
-    """List schools so parents/teachers can register against them."""
-    db = get_db()
-    schools = await db.schools.find({}, {"_id": 0, "id": 1, "name": 1}).to_list(500)
-    return {"schools": schools}

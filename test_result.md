@@ -101,3 +101,173 @@
 #====================================================================================================
 # Testing Data - Main Agent and testing sub agent both should log testing data below this section
 #====================================================================================================
+
+user_problem_statement: |
+  Phase A (Tenant Security) + Phase B (Multi-class roster + School-type) + Phase C (CBT True/False & image questions)
+  added to Corner Streams MVP. WhatsApp messaging (Phase E) deferred to next session.
+
+backend:
+  - task: "Phase A — Tenant security audit & cross-tenant isolation"
+    implemented: true
+    working: true
+    file: "backend/routers/*"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -working: true
+        -agent: "main"
+        -comment: "Removed public /auth/schools-public (was unused & leaked school list). All existing routers already scope by user.school_id; manually verified: cross-tenant GET /scores, /reports, /students returns 403. Need formal pen-test pass."
+        -working: true
+        -agent: "testing"
+        -comment: |
+          ✅ ALL PHASE A TESTS PASSED (8/8):
+          • /auth/schools-public removed (404) ✓
+          • Cross-tenant student isolation: School-A admin cannot see School-B or Sunrise students ✓
+          • Cross-tenant scores: School-A admin gets 403 when accessing School-B/Sunrise student scores ✓
+          • Cross-tenant reports: School-A admin gets 403 when accessing School-B/Sunrise student reports ✓
+          • Cross-tenant annual reports: School-A admin gets 403 for Sunrise annual reports ✓
+          • Cross-tenant student update: School-A admin gets 404 when trying to update Sunrise student ✓
+          • Cross-tenant CBT exams: School-A admin gets 403 when accessing Sunrise CBT exams ✓
+          • Cross-tenant users: School-A admin can only see School-A users ✓
+          
+          Tenant isolation is FULLY FUNCTIONAL. All routers properly scope by school_id.
+
+  - task: "Phase B — School type (primary/secondary/mixed) on registration + class roster"
+    implemented: true
+    working: true
+    file: "backend/db.py, backend/routers/auth.py, backend/routers/schools.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -working: true
+        -agent: "main"
+        -comment: |
+          Added DEFAULT_CLASSES_BY_TYPE in db.py:
+          - primary: Nursery 1-2, Primary 1-6
+          - secondary: JSS 1-3, SS 1-3
+          - mixed: all of above
+          /auth/register now accepts school_type (default 'secondary') and auto-seeds school.classes.
+          /schools/me returns school_type + classes. /schools/me PUT accepts both for editing.
+          /schools/me/classes POST adds a custom class name (e.g., 'JSS 1 Crystal').
+          /schools/me/classes/{name} DELETE removes (blocked if students assigned, can't remove last class).
+          Demo school backfilled to secondary type on startup.
+        -working: true
+        -agent: "testing"
+        -comment: |
+          ✅ ALL PHASE B TESTS PASSED (11/11):
+          • Primary school classes: Correct classes (Nursery 1-2, Primary 1-6) ✓
+          • Secondary school classes: Correct classes (JSS 1-3, SS 1-3) ✓
+          • Mixed school classes: Both primary and secondary classes (14 total) ✓
+          • Default school type: Defaults to 'secondary' when not specified ✓
+          • Add custom class: Successfully adds custom class names ✓
+          • Add duplicate class: Rejects duplicate class names (400) ✓
+          • Add empty class: Rejects empty/whitespace class names (400) ✓
+          • Delete class (no students): Successfully deletes unused classes ✓
+          • Delete class (with students): Blocks deletion when students assigned (400) ✓
+          • Delete last class: Prevents deletion of last remaining class (400) ✓
+          • Update school classes: PUT /schools/me successfully updates classes ✓
+          
+          School type and class roster management is FULLY FUNCTIONAL.
+
+  - task: "Phase C — CBT True/False (Primary only) + image questions"
+    implemented: true
+    working: true
+    file: "backend/routers/cbt.py, backend/db.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -working: true
+        -agent: "main"
+        -comment: |
+          MCQ class replaced with Question(type='mcq'|'true_false', image_url=optional base64).
+          For true_false: options auto-set to ['True','False'], correct_idx 0=True, 1=False.
+          Server-side validation: any true_false question rejected if school_type not in (primary, mixed) → returns 400.
+          _strip_correct now includes type + image_url so students see them.
+          Existing exam questions backfilled to type='mcq' on startup.
+          Manual test: hacker (primary school) can create T/F; sunrise (secondary) gets 400 'True/False only for Primary or Mixed schools.'
+        -working: true
+        -agent: "testing"
+        -comment: |
+          ✅ ALL PHASE C TESTS PASSED (11/11):
+          • Primary true/false questions: Successfully creates T/F questions with images ✓
+          • Secondary true/false rejected: Secondary schools get 400 with correct error message ✓
+          • Secondary MCQ still works: Secondary schools can still create MCQ exams ✓
+          • Student sees type and image: Students see type & image_url but not correct_idx ✓
+          • Mixed school true/false: Mixed schools can create T/F questions ✓
+          • Update exam with true/false: Primary schools can update exams with mixed MCQ+T/F ✓
+          • Secondary update rejected: Secondary schools cannot update to include T/F (400) ✓
+          • Backward compatibility: Existing exams have type='mcq' backfilled ✓
+          • Student takes T/F exam: Students can start, take, and submit T/F exams ✓
+          • Image URL preservation: Base64 image URLs correctly preserved throughout ✓
+          • Options auto-set: T/F questions automatically get ['True','False'] options ✓
+          
+          CBT True/False and image questions are FULLY FUNCTIONAL.
+
+frontend:
+  - task: "Frontend — Multi-class school registration, custom classes, CBT TF+image"
+    implemented: false
+    working: "NA"
+    file: "frontend/src/pages/*"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -working: "NA"
+        -agent: "main"
+        -comment: "Not started — will build after backend testing confirms green."
+
+metadata:
+  created_by: "main_agent"
+  version: "1.0"
+  test_sequence: 2
+  run_ui: false
+
+test_plan:
+  current_focus:
+    - "Phase A — Tenant security audit & cross-tenant isolation"
+    - "Phase B — School type (primary/secondary/mixed) on registration + class roster"
+    - "Phase C — CBT True/False (Primary only) + image questions"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+    -agent: "main"
+    -message: |
+      Phase A+B+C backend complete. Please run a focused test on these three areas only:
+      1. Tenant isolation pen-tests:
+         - Register two new schools (School-A primary, School-B secondary)
+         - Verify School-A admin cannot read School-B's students/scores/reports/CBT/users (all should 403 or empty)
+         - Verify /auth/schools-public no longer exists (should 404)
+      2. Multi-class roster:
+         - Register primary school → /schools/me returns classes containing 'Nursery 1', 'Primary 1' etc.
+         - Register secondary school → /schools/me returns classes containing 'JSS 1', 'SS 1' etc.
+         - POST /schools/me/classes with name 'JSS 1 Crystal' appends
+         - DELETE /schools/me/classes/{name} works when no students assigned; returns 400 when students assigned
+         - DELETE on last class returns 400
+      3. CBT enhancements:
+         - Primary school admin creates exam with true_false + image_url question → 200 OK; question returned with type='true_false', options=['True','False'], image_url preserved
+         - Secondary school admin attempts true_false → 400 with the exact 'Primary or Mixed schools' message
+         - Student in primary school takes the TF+image exam → submitted answers auto-graded correctly; review endpoint exposes image_url + type
+         - Existing demo school exams still work (backward compat — questions auto-typed 'mcq')
+
+      Demo creds:
+        super@cornerstreams.com / Super@123
+        admin@demo.school / Admin@123 (Sunrise — secondary)
+        adaeze@demo.school / Student@123 (JSS 1)
+    -agent: "testing"
+    -message: |
+      ✅ PHASE A+B+C BACKEND TESTING COMPLETE — ALL 30 TESTS PASSED
+      
+      Comprehensive test suite executed with 100% pass rate:
+      • Phase A (Tenant Security): 8/8 tests passed
+      • Phase B (School Type & Classes): 11/11 tests passed
+      • Phase C (CBT True/False & Images): 11/11 tests passed
+      
+      Test file: /app/backend_test_phases_abc.py
+      
+      All three phases are production-ready. No critical or major issues found.
+      Backend implementation is solid and meets all requirements.
