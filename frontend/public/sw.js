@@ -1,6 +1,13 @@
-/* Corner Streams — service worker (basic offline shell). */
-const CACHE = "cornerstreams-v1";
-const SHELL = ["/", "/manifest.json"];
+/* Corner Streams — service worker (offline shell + PWA install support). */
+const CACHE = "cornerstreams-v2";
+const SHELL = [
+  "/",
+  "/manifest.json",
+  "/apple-touch-icon.png",
+  "/icon-192.png",
+  "/icon-512.png",
+  "/favicon-32.png",
+];
 
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).catch(() => {}));
