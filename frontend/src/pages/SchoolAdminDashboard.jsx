@@ -15,7 +15,8 @@ import { toast } from "sonner";
 import {
   Users, Receipt, FileBarChart, ShieldCheck, Upload, Plus, ArrowRight,
   AlertTriangle, CreditCard, KeyRound, Image as ImageIcon, BookOpen, Trash2,
-  CheckCircle2, Circle, Download, GraduationCap,
+  CheckCircle2, Circle, Download, GraduationCap, FileSpreadsheet, Activity,
+  UserPlus, ClipboardList, History,
 } from "lucide-react";
 import { ChartCard, BarSimple, DonutChart, GrowthArea } from "@/components/Charts.jsx";
 
@@ -68,6 +69,35 @@ export default function SchoolAdminDashboard() {
   // Classes management
   const [newClassName, setNewClassName] = useState("");
   const classes = useMemo(() => school?.classes || [], [school]);
+
+  // Audit log / activity feed
+  const [audit, setAudit] = useState({ events: [], counts: {}, total: 0 });
+  const fetchAudit = async () => {
+    try {
+      const { data } = await api.get("/audit/");
+      setAudit(data);
+    } catch (e) { /* silent */ void e; }
+  };
+
+  // Universal template downloader (auth-aware blob fetch)
+  const downloadTemplate = async (kind) => {
+    const labels = {
+      students: "students-template.xlsx",
+      teachers: "teachers-template.xlsx",
+      "cbt-questions": "cbt-questions-template.xlsx",
+    };
+    try {
+      const res = await api.get(`/templates/${kind}.xlsx`, { responseType: "blob" });
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const a = document.createElement("a");
+      a.href = url; a.download = labels[kind] || `${kind}.xlsx`;
+      document.body.appendChild(a); a.click(); a.remove();
+      window.URL.revokeObjectURL(url);
+      toast.success(`Template downloaded — open in Excel to fill`);
+    } catch (e) {
+      toast.error(formatApiError(e.response?.data?.detail) || e.message);
+    }
+  };
   const addClass = async () => {
     const name = newClassName.trim();
     if (!name) { toast.error("Enter a class name"); return; }
@@ -372,15 +402,26 @@ export default function SchoolAdminDashboard() {
                   <input type="file" accept=".xlsx" className="hidden" onChange={onUpload} data-testid="quick-bulk-upload" />
                   <span className="inline-flex items-center justify-center w-full h-9 rounded-md cs-bg-blue text-white text-sm font-medium hover:opacity-90 btn-anim"><Upload size={16} className="mr-1" /> Bulk upload .xlsx</span>
                 </label>
+                <Button variant="outline" onClick={() => downloadTemplate("students")} className="btn-anim" data-testid="quick-download-students-tpl"><FileSpreadsheet size={16} className="mr-1" /> Students template</Button>
+                <Button variant="outline" onClick={() => downloadTemplate("teachers")} className="btn-anim" data-testid="quick-download-teachers-tpl"><FileSpreadsheet size={16} className="mr-1" /> Teachers template</Button>
                 <Button variant="outline" onClick={() => setTab("subscription")} className="btn-anim" data-testid="quick-pay"><CreditCard size={16} className="mr-1" /> Pay subscription</Button>
                 <Button variant="outline" onClick={() => setTab("users")} className="btn-anim" data-testid="quick-users"><Users size={16} className="mr-1" /> Manage users</Button>
               </div>
             </div>
             <div className="cs-card p-6">
-              <h3 className="font-display font-semibold cs-text-navy text-lg">Excel bulk upload format</h3>
-              <p className="text-sm text-slate-500 mt-2">Required columns (row 1):</p>
-              <code className="block mt-2 text-xs bg-slate-50 rounded p-3 border">name | age | gender | class_name | parent_email (optional) | balance_due (optional)</code>
-              <p className="text-xs text-slate-500 mt-3">parent_email links a student to a Parent Portal user. balance_due triggers Debt Lock.</p>
+              <h3 className="font-display font-semibold cs-text-navy text-lg">Bulk upload — fast onboarding</h3>
+              <p className="text-sm text-slate-500 mt-2">Download a ready-to-fill Excel template, paste your data, then upload:</p>
+              <div className="mt-3 space-y-2">
+                <Button variant="outline" onClick={() => downloadTemplate("students")} className="w-full rounded-lg justify-start btn-anim" data-testid="tpl-students-overview">
+                  <FileSpreadsheet size={14} className="mr-2 cs-text-blue" /> Students template <span className="ml-auto text-xs text-slate-400">name · class · parent info</span>
+                </Button>
+                <Button variant="outline" onClick={() => downloadTemplate("teachers")} className="w-full rounded-lg justify-start btn-anim" data-testid="tpl-teachers-overview">
+                  <FileSpreadsheet size={14} className="mr-2 cs-text-blue" /> Teachers template <span className="ml-auto text-xs text-slate-400">name · email · class</span>
+                </Button>
+                <Button variant="outline" onClick={() => downloadTemplate("cbt-questions")} className="w-full rounded-lg justify-start btn-anim" data-testid="tpl-cbt-overview">
+                  <FileSpreadsheet size={14} className="mr-2 cs-text-blue" /> CBT questions template <span className="ml-auto text-xs text-slate-400">offline planning</span>
+                </Button>
+              </div>
               <Button variant="outline" onClick={() => navigate("/welcome-pack")} className="mt-4 rounded-full btn-anim w-full" data-testid="welcome-pack-link"><Download size={14} className="mr-1" /> Generate Welcome Pack</Button>
             </div>
 

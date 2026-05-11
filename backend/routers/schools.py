@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field
 from typing import Optional, List, Literal
 from db import get_db, now_iso, default_classes, SCHOOL_TYPES
 from auth_utils import get_current_user, require_roles
+from audit_log import log_event, EVENT_CLASS_ADDED, EVENT_CLASS_REMOVED
 
 router = APIRouter(prefix="/schools", tags=["schools"])
 
@@ -83,6 +84,11 @@ async def add_class(payload: ClassAddIn, user: dict = Depends(require_roles("sch
         raise HTTPException(status_code=400, detail="Class already exists")
     classes.append(name)
     await db.schools.update_one({"id": user["school_id"]}, {"$set": {"classes": classes, "updated_at": now_iso()}})
+    await log_event(
+        school_id=user["school_id"], event_type=EVENT_CLASS_ADDED,
+        actor_id=user.get("id"), actor_name=user.get("name"), actor_role=user.get("role"),
+        summary=f"Class added: {name}", details={"class_name": name},
+    )
     return {"classes": classes}
 
 
@@ -104,4 +110,9 @@ async def remove_class(class_name: str, user: dict = Depends(require_roles("scho
     if not classes:
         raise HTTPException(status_code=400, detail="Cannot remove last class")
     await db.schools.update_one({"id": user["school_id"]}, {"$set": {"classes": classes, "updated_at": now_iso()}})
+    await log_event(
+        school_id=user["school_id"], event_type=EVENT_CLASS_REMOVED,
+        actor_id=user.get("id"), actor_name=user.get("name"), actor_role=user.get("role"),
+        summary=f"Class removed: {class_name}", details={"class_name": class_name},
+    )
     return {"classes": classes}

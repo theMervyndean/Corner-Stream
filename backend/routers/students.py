@@ -6,6 +6,7 @@ from io import BytesIO
 import openpyxl
 from db import get_db, hash_password, new_id, now_iso
 from auth_utils import get_current_user, require_roles
+from audit_log import log_event, EVENT_BULK_STUDENTS, EVENT_STUDENT_ADDED
 
 router = APIRouter(prefix="/students", tags=["students"])
 
@@ -16,7 +17,9 @@ class StudentIn(BaseModel):
     gender: str
     class_name: str
     passport_url: Optional[str] = ""
+    parent_name: Optional[str] = ""
     parent_email: Optional[str] = None
+    parent_phone: Optional[str] = ""
     balance_due: float = 0
 
 
@@ -26,7 +29,9 @@ class StudentUpdate(BaseModel):
     gender: Optional[str] = None
     class_name: Optional[str] = None
     passport_url: Optional[str] = None
+    parent_name: Optional[str] = None
     parent_email: Optional[str] = None
+    parent_phone: Optional[str] = None
     balance_due: Optional[float] = None
 
 
@@ -77,6 +82,12 @@ async def create_student(payload: StudentIn, user: dict = Depends(require_roles(
     doc["created_at"] = now_iso()
     await db.students.insert_one(doc)
     doc.pop("_id", None)
+    await log_event(
+        school_id=user["school_id"], event_type=EVENT_STUDENT_ADDED,
+        actor_id=user.get("id"), actor_name=user.get("name"), actor_role=user.get("role"),
+        summary=f"Student added: {doc['name']} ({doc['class_name']})",
+        details={"student_id": doc["id"], "name": doc["name"], "class_name": doc["class_name"]},
+    )
     return {"student": doc}
 
 
@@ -148,7 +159,9 @@ async def bulk_upload(file: UploadFile = File(...), user: dict = Depends(require
                 "age": int(record.get("age") or 0),
                 "gender": str(record.get("gender", "")).strip(),
                 "class_name": class_name,
+                "parent_name": str(record.get("parent_name") or "").strip(),
                 "parent_email": (str(record.get("parent_email")).strip().lower() if record.get("parent_email") else None),
+                "parent_phone": str(record.get("parent_phone") or "").strip(),
                 "passport_url": "",
                 "balance_due": float(record.get("balance_due") or 0),
                 "created_at": now_iso(),
@@ -172,6 +185,23 @@ async def bulk_upload(file: UploadFile = File(...), user: dict = Depends(require
             {"id": user["school_id"]},
             {"$set": {"classes": school_classes, "updated_at": now_iso()}},
         )
+
+    # Audit log this bulk upload
+    await log_event(
+        school_id=user["school_id"],
+        event_type=EVENT_BULK_STUDENTS,
+        actor_id=user.get("id"),
+        actor_name=user.get("name"),
+        actor_role=user.get("role"),
+        summary=f"Bulk upload — {len(inserted)} students inserted, {len(errors)} errors",
+        details={
+            "filename": file.filename,
+            "inserted_count": len(inserted),
+            "error_count": len(errors),
+            "new_classes_added": new_classes_added,
+            "student_names": [s["name"] for s in inserted[:20]],  # preview first 20
+        },
+    )
 
     return {"inserted": len(inserted), "errors": errors, "students": inserted, "new_classes_added": new_classes_added}
 

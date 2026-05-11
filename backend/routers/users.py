@@ -1,9 +1,12 @@
 """User management — school admin creates teacher/parent profiles."""
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from pydantic import BaseModel, EmailStr, Field
 from typing import Optional, List
+from io import BytesIO
+import openpyxl
 from db import get_db, hash_password, new_id, now_iso
 from auth_utils import require_roles
+from audit_log import log_event, EVENT_TEACHER_ADDED, EVENT_PARENT_ADDED, EVENT_BULK_TEACHERS
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -65,7 +68,86 @@ async def create_user(payload: UserCreateIn, user: dict = Depends(require_roles(
             doc["school_role"] = payload.school_role
     await db.users.insert_one(doc)
     doc.pop("_id", None); doc.pop("password_hash", None)
+    # Audit log
+    await log_event(
+        school_id=user["school_id"],
+        event_type=EVENT_TEACHER_ADDED if payload.role == "teacher" else EVENT_PARENT_ADDED,
+        actor_id=user.get("id"), actor_name=user.get("name"), actor_role=user.get("role"),
+        summary=f"{payload.role.capitalize()} added: {doc['name']} ({email})",
+        details={"user_id": doc["id"], "email": email, "role": payload.role,
+                 "assigned_class": doc.get("assigned_class")},
+    )
     return {"user": doc}
+
+
+@router.post("/bulk-teachers")
+async def bulk_teachers(file: UploadFile = File(...), user: dict = Depends(require_roles("school_admin"))):
+    """Bulk-upload teachers from an .xlsx file matching the teachers template.
+    Required columns: name, email, password. Optional: phone, assigned_class, subject_specialty."""
+    if not (file.filename or "").lower().endswith((".xlsx", ".xlsm")):
+        raise HTTPException(status_code=400, detail="Only .xlsx files supported")
+    contents = await file.read()
+    try:
+        wb = openpyxl.load_workbook(BytesIO(contents), data_only=True)
+        ws = wb.active
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Could not read Excel: {e}")
+
+    rows = list(ws.iter_rows(values_only=True))
+    if len(rows) < 2:
+        raise HTTPException(status_code=400, detail="Excel file is empty")
+
+    headers = [str(h or "").strip().lower().replace(" ", "_") for h in rows[0]]
+    required = ["name", "email", "password"]
+    for r in required:
+        if r not in headers:
+            raise HTTPException(status_code=400, detail=f"Missing required column: {r}")
+
+    db = get_db()
+    inserted: List[dict] = []
+    errors: List[str] = []
+
+    for i, row in enumerate(rows[1:], start=2):
+        # Skip helper-text row (no real email)
+        if not row or all(c is None or (isinstance(c, str) and not c.strip()) for c in row):
+            continue
+        record = dict(zip(headers, row))
+        try:
+            email = (str(record.get("email") or "").strip().lower())
+            name = str(record.get("name") or "").strip()
+            password = str(record.get("password") or "").strip()
+            if not email or "@" not in email or not name or not password:
+                errors.append(f"Row {i}: missing/invalid name, email or password")
+                continue
+            if await db.users.find_one({"email": email}):
+                errors.append(f"Row {i}: email {email} already exists — skipped")
+                continue
+            doc = {
+                "id": new_id(), "email": email, "name": name,
+                "password_hash": hash_password(password),
+                "role": "teacher", "school_id": user["school_id"],
+                "phone": str(record.get("phone") or "").strip(),
+                "subject_specialty": str(record.get("subject_specialty") or "").strip(),
+                "created_at": now_iso(),
+            }
+            assigned = str(record.get("assigned_class") or "").strip()
+            if assigned:
+                doc["assigned_class"] = assigned
+                doc["assigned_classes"] = [assigned]
+            await db.users.insert_one(doc)
+            doc.pop("_id", None); doc.pop("password_hash", None)
+            inserted.append(doc)
+        except Exception as e:
+            errors.append(f"Row {i}: {e}")
+
+    await log_event(
+        school_id=user["school_id"], event_type=EVENT_BULK_TEACHERS,
+        actor_id=user.get("id"), actor_name=user.get("name"), actor_role=user.get("role"),
+        summary=f"Bulk upload — {len(inserted)} teachers inserted, {len(errors)} errors",
+        details={"filename": file.filename, "inserted_count": len(inserted), "error_count": len(errors),
+                 "teacher_names": [t["name"] for t in inserted[:20]]},
+    )
+    return {"inserted": len(inserted), "errors": errors, "teachers": inserted}
 
 
 @router.put("/{user_id}")

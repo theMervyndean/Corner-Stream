@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field, model_validator
 from typing import List, Optional, Literal
 from db import get_db, new_id, now_iso, _calc_grade, allows_true_false
 from auth_utils import get_current_user, require_roles
+from audit_log import log_event, EVENT_EXAM_CREATED, EVENT_EXAM_PUBLISHED, EVENT_ATTEMPT_SUBMITTED
 
 router = APIRouter(prefix="/cbt", tags=["cbt"])
 
@@ -155,6 +156,13 @@ async def create_exam(payload: ExamIn, user: dict = Depends(require_roles("teach
     }
     await db.cbt_exams.insert_one(doc)
     doc.pop("_id", None)
+    await log_event(
+        school_id=school_id, event_type=EVENT_EXAM_CREATED,
+        actor_id=user.get("id"), actor_name=user.get("name"), actor_role=user.get("role"),
+        summary=f"Exam created: {doc['title']} ({doc['class_name']} · {doc['subject']})",
+        details={"exam_id": doc["id"], "title": doc["title"], "class_name": doc["class_name"],
+                 "subject": doc["subject"], "questions_count": len(doc["questions"])},
+    )
     return {"exam": doc}
 
 
@@ -325,6 +333,16 @@ async def submit_attempt(attempt_id: str, payload: SubmitIn, user: dict = Depend
 
     # Auto-fill exam score
     await _upsert_score_from_cbt(db, student, exam, pct, exam.get("created_by"))
+
+    # Audit log attempt
+    await log_event(
+        school_id=student["school_id"], event_type=EVENT_ATTEMPT_SUBMITTED,
+        actor_id=user.get("id"), actor_name=student["name"], actor_role="student",
+        summary=f"{student['name']} took {exam['title']} — scored {pct}%",
+        details={"exam_id": exam["id"], "exam_title": exam["title"], "student_id": student["id"],
+                 "student_name": student["name"], "class_name": student.get("class_name"),
+                 "subject": exam["subject"], "raw_score": raw_score, "total_qs": total_qs, "score_pct": pct},
+    )
 
     return {"attempt": {**attempt, **update}, "review": {
         "questions": questions, "answers": answers, "raw_score": raw_score, "total_qs": total_qs, "score_pct": pct,
