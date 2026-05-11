@@ -4,7 +4,28 @@ import Navbar from "@/components/Navbar.jsx";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/auth.jsx";
 import { api, formatApiError } from "@/lib/api";
-import { toast } from "sonner";import { Lock, FileText, AlertTriangle } from "lucide-react";
+import { toast } from "sonner";
+import { Lock, FileText, AlertTriangle } from "lucide-react";
+import { ChartCard, LineSeries } from "@/components/Charts.jsx";
+
+function ChildProgress({ studentId }) {
+  const [data, setData] = useState(null);
+  useEffect(() => {
+    let active = true;
+    api.get(`/analytics/student/${studentId}`)
+      .then(({ data }) => { if (active) setData(data); })
+      .catch(() => { /* silent — chart is optional */ });
+    return () => { active = false; };
+  }, [studentId]);
+  if (!data || !data.series || data.series.length === 0) return null;
+  return (
+    <div className="mt-4" data-testid={`child-progress-${studentId}`}>
+      <ChartCard title="Term progression" subtitle="Average across all subjects">
+        <LineSeries data={data.series} xKey="term" yKey="average" color="#28A745" />
+      </ChartCard>
+    </div>
+  );
+}
 
 export default function ParentPortal() {
   const { user } = useAuth();
