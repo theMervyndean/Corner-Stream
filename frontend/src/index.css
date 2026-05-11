@@ -182,19 +182,7 @@ h1, h2, h3, h4, h5, h6, .font-display {
 [data-reveal][data-reveal-delay="4"].revealed { transition-delay: 320ms; }
 [data-reveal][data-reveal-delay="5"].revealed { transition-delay: 400ms; }
 
-/* Button micro-interactions */
-.btn-anim {
-  transition: transform 200ms cubic-bezier(.21,.6,.35,1), box-shadow 250ms ease, opacity 200ms;
-  will-change: transform;
-}
-.btn-anim:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 10px 22px rgba(0, 33, 71, 0.14);
-}
-.btn-anim:active {
-  transform: translateY(0) scale(0.97);
-  box-shadow: 0 4px 8px rgba(0, 33, 71, 0.10);
-}
+/* Button micro-interactions — see consolidated definition below */
 
 /* Subtle grid background for hero */
 .grid-bg {
@@ -203,3 +191,265 @@ h1, h2, h3, h4, h5, h6, .font-display {
     linear-gradient(90deg, rgba(0, 33, 71, 0.05) 1px, transparent 1px);
   background-size: 32px 32px;
 }
+
+/* ============================================================
+   GLOBAL ANIMATIONS PASS — applied via CSS selectors so every
+   page, button, dialog, nav and table responds without code edits.
+   Easing: cubic-bezier(.21, .6, .35, 1) — the "Apple-style" ease-out.
+   Respects prefers-reduced-motion at the bottom.
+   ============================================================ */
+
+:root {
+  --cs-ease: cubic-bezier(.21, .6, .35, 1);
+}
+
+/* --- Page transitions: smooth fade-up on route change --- */
+.page-anim {
+  animation: pageEnter 520ms var(--cs-ease) both;
+}
+@keyframes pageEnter {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* --- Baseline button feedback (every button, not just .btn-anim) --- */
+button {
+  transition:
+    transform 200ms var(--cs-ease),
+    box-shadow 250ms ease,
+    background-color 200ms ease,
+    color 200ms ease,
+    border-color 200ms ease,
+    opacity 200ms ease;
+}
+button:not(:disabled):hover {
+  transform: translateY(-1px);
+}
+button:not(:disabled):active {
+  transform: translateY(0) scale(0.97);
+}
+button:disabled {
+  cursor: not-allowed;
+}
+
+/* Stronger .btn-anim override for primary CTAs */
+.btn-anim {
+  transition:
+    transform 220ms var(--cs-ease),
+    box-shadow 280ms ease,
+    opacity 200ms ease;
+  will-change: transform;
+}
+.btn-anim:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 24px rgba(0, 33, 71, 0.16);
+}
+.btn-anim:active:not(:disabled) {
+  transform: translateY(0) scale(0.97);
+  box-shadow: 0 4px 8px rgba(0, 33, 71, 0.10);
+}
+
+/* --- Card hover lift everywhere --- */
+.cs-card {
+  transition:
+    transform 280ms var(--cs-ease),
+    box-shadow 280ms ease,
+    border-color 200ms ease;
+  will-change: transform;
+}
+.cs-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 18px 36px -14px rgba(0, 33, 71, 0.2);
+}
+
+/* --- Anchors: hover color + nav underline --- */
+a {
+  transition: color 180ms ease, opacity 180ms ease;
+}
+
+header nav a {
+  position: relative;
+  padding-bottom: 2px;
+}
+header nav a::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: -2px;
+  height: 2px;
+  width: 0;
+  background: var(--cs-green);
+  border-radius: 2px;
+  transition: width 280ms var(--cs-ease);
+}
+header nav a:hover::after {
+  width: 100%;
+}
+
+/* --- Tab content fade-up when switched --- */
+[role="tabpanel"][data-state="active"] {
+  animation: tabFade 320ms var(--cs-ease) both;
+}
+@keyframes tabFade {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Tabs trigger underline gleam */
+[role="tab"] {
+  transition: color 180ms ease, background-color 180ms ease;
+}
+
+/* --- Dialog / modal entry --- */
+[role="dialog"][data-state="open"] {
+  animation: dialogIn 280ms var(--cs-ease) both;
+}
+[role="dialog"][data-state="closed"] {
+  animation: dialogOut 200ms ease both;
+}
+@keyframes dialogIn {
+  from { opacity: 0; transform: translate(-50%, calc(-50% - 8px)) scale(0.96); }
+  to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+@keyframes dialogOut {
+  from { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  to { opacity: 0; transform: translate(-50%, calc(-50% - 4px)) scale(0.98); }
+}
+
+/* Dropdowns / popovers fade in */
+[data-radix-popper-content-wrapper] {
+  animation: popoverIn 220ms var(--cs-ease) both;
+}
+@keyframes popoverIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* --- Table row staggered fade-in (subtle, only on initial render) --- */
+tbody tr {
+  animation: rowFade 380ms var(--cs-ease) both;
+}
+tbody tr:nth-child(1) { animation-delay: 0ms; }
+tbody tr:nth-child(2) { animation-delay: 35ms; }
+tbody tr:nth-child(3) { animation-delay: 70ms; }
+tbody tr:nth-child(4) { animation-delay: 105ms; }
+tbody tr:nth-child(5) { animation-delay: 140ms; }
+tbody tr:nth-child(6) { animation-delay: 175ms; }
+tbody tr:nth-child(7) { animation-delay: 210ms; }
+tbody tr:nth-child(8) { animation-delay: 245ms; }
+tbody tr:nth-child(9) { animation-delay: 280ms; }
+tbody tr:nth-child(10) { animation-delay: 315ms; }
+tbody tr:nth-child(n+11) { animation-delay: 350ms; }
+@keyframes rowFade {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+tbody tr {
+  transition: background-color 200ms ease;
+}
+
+/* --- Form inputs: focus lift + smooth ring --- */
+input, textarea, select {
+  transition:
+    border-color 200ms ease,
+    box-shadow 220ms var(--cs-ease),
+    background-color 200ms ease;
+}
+input:focus, textarea:focus, select:focus,
+input:focus-visible, textarea:focus-visible, select:focus-visible {
+  box-shadow: 0 0 0 3px rgba(0, 86, 179, 0.18);
+}
+
+/* Checkbox + radio scale on check */
+input[type="checkbox"], input[type="radio"] {
+  transition: transform 200ms var(--cs-ease);
+}
+input[type="checkbox"]:checked, input[type="radio"]:checked {
+  transform: scale(1.08);
+}
+
+/* --- Badges / icons subtle motion --- */
+.cs-pulse {
+  animation: csPulse 2.4s ease-in-out infinite;
+}
+@keyframes csPulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.75; transform: scale(1.04); }
+}
+
+/* Soft hover float for icon buttons */
+.icon-float {
+  transition: transform 220ms var(--cs-ease);
+}
+.icon-float:hover { transform: translateY(-2px); }
+
+/* --- Stat tiles / KPI cards hover lift --- */
+[class*="stat-tile"], .kpi-tile {
+  transition: transform 250ms var(--cs-ease), box-shadow 250ms ease;
+}
+[class*="stat-tile"]:hover, .kpi-tile:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 14px 28px -12px rgba(0, 33, 71, 0.18);
+}
+
+/* --- Toast (sonner) — already animated, but ensure smooth --- */
+[data-sonner-toast] {
+  transition: transform 280ms var(--cs-ease), opacity 280ms ease;
+}
+
+/* --- Image hover for landing samples --- */
+img.cs-img-hover, .cs-img-hover img {
+  transition: transform 360ms var(--cs-ease), filter 280ms ease;
+}
+img.cs-img-hover:hover, .cs-img-hover:hover img {
+  transform: scale(1.03);
+  filter: brightness(1.04);
+}
+
+/* --- Loading spinner uses tailwind animate-spin, but let's keep
+   skeleton shimmer available --- */
+.cs-skeleton {
+  background: linear-gradient(90deg, #E2E8F0 0%, #F1F5F9 50%, #E2E8F0 100%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+  border-radius: 8px;
+}
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* --- Smooth scroll for anchor links --- */
+html { scroll-behavior: smooth; }
+
+/* --- Tab triggers: ripple-like background fade --- */
+[role="tab"][data-state="active"] {
+  animation: tabActive 280ms var(--cs-ease) both;
+}
+@keyframes tabActive {
+  from { transform: scale(0.97); opacity: 0.7; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+/* --- Accordion / details smooth open --- */
+details[open] > *:not(summary) {
+  animation: detailsOpen 320ms var(--cs-ease) both;
+}
+@keyframes detailsOpen {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+details summary {
+  transition: color 200ms ease;
+}
+
+/* --- Accessibility: respect reduced motion --- */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+

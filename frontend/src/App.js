@@ -1,5 +1,5 @@
 import React from "react";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/lib/auth.jsx";
 import ProtectedRoute from "@/components/ProtectedRoute.jsx";
 import { Toaster } from "sonner";
@@ -27,7 +27,7 @@ function HomeRoute() {
   const host = typeof window !== "undefined" ? window.location.hostname : "";
   const isAdminSubdomain = host.startsWith("admin.");
 
-  if (user === null) return <div className="h-screen flex items-center justify-center text-slate-500">Loading…</div>;
+  if (user === null) return <div className="h-screen flex items-center justify-center text-slate-500"><span className="cs-skeleton inline-block w-32 h-6" /></div>;
 
   if (isAdminSubdomain) {
     if (user && user.role === "super_admin") return <Navigate to="/dashboard/super" replace />;
@@ -42,30 +42,42 @@ function HomeRoute() {
   return <Landing />;
 }
 
+/** Wraps Routes so every route change triggers the page-anim fade-up.
+ * The `key` on the wrapper forces a remount of the subtree, which restarts
+ * the CSS animation declared on `.page-anim`. */
+function AnimatedRoutes() {
+  const location = useLocation();
+  return (
+    <div key={location.pathname} className="page-anim">
+      <Routes location={location}>
+        <Route path="/" element={<HomeRoute />} />
+        <Route path="/login" element={<Login />} />
+        <Route path="/register" element={<Register />} />
+        <Route path="/dashboard/school" element={<ProtectedRoute roles={["school_admin"]}><SchoolAdminDashboard /></ProtectedRoute>} />
+        <Route path="/dashboard/teacher" element={<ProtectedRoute roles={["teacher"]}><TeacherDashboard /></ProtectedRoute>} />
+        <Route path="/dashboard/parent" element={<ProtectedRoute roles={["parent"]}><ParentPortal /></ProtectedRoute>} />
+        <Route path="/dashboard/student" element={<ProtectedRoute roles={["student"]}><StudentDashboard /></ProtectedRoute>} />
+        <Route path="/dashboard/super" element={<ProtectedRoute roles={["super_admin"]}><SuperAdmin /></ProtectedRoute>} />
+        <Route path="/cbt/:examId" element={<ProtectedRoute roles={["student"]}><CBTTake /></ProtectedRoute>} />
+        <Route path="/cbt/review/:attemptId" element={<ProtectedRoute><CBTReview /></ProtectedRoute>} />
+        <Route path="/welcome-pack" element={<ProtectedRoute roles={["school_admin"]}><WelcomePack /></ProtectedRoute>} />
+        <Route path="/report/:studentId/:term" element={<ProtectedRoute><ReportCard /></ProtectedRoute>} />
+        <Route path="/report/annual/:studentId" element={<ProtectedRoute><AnnualReport /></ProtectedRoute>} />
+        <Route path="/admin" element={<Navigate to="/login?admin=1" replace />} />
+        <Route path="/checkout/return" element={<ProtectedRoute><CheckoutReturn /></ProtectedRoute>} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </div>
+  );
+}
+
 export default function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
         <Toaster richColors position="top-right" />
         <InstallPrompt />
-        <Routes>
-          <Route path="/" element={<HomeRoute />} />
-          <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
-          <Route path="/dashboard/school" element={<ProtectedRoute roles={["school_admin"]}><SchoolAdminDashboard /></ProtectedRoute>} />
-          <Route path="/dashboard/teacher" element={<ProtectedRoute roles={["teacher"]}><TeacherDashboard /></ProtectedRoute>} />
-          <Route path="/dashboard/parent" element={<ProtectedRoute roles={["parent"]}><ParentPortal /></ProtectedRoute>} />
-          <Route path="/dashboard/student" element={<ProtectedRoute roles={["student"]}><StudentDashboard /></ProtectedRoute>} />
-          <Route path="/dashboard/super" element={<ProtectedRoute roles={["super_admin"]}><SuperAdmin /></ProtectedRoute>} />
-          <Route path="/cbt/:examId" element={<ProtectedRoute roles={["student"]}><CBTTake /></ProtectedRoute>} />
-          <Route path="/cbt/review/:attemptId" element={<ProtectedRoute><CBTReview /></ProtectedRoute>} />
-          <Route path="/welcome-pack" element={<ProtectedRoute roles={["school_admin"]}><WelcomePack /></ProtectedRoute>} />
-          <Route path="/report/:studentId/:term" element={<ProtectedRoute><ReportCard /></ProtectedRoute>} />
-          <Route path="/report/annual/:studentId" element={<ProtectedRoute><AnnualReport /></ProtectedRoute>} />
-          <Route path="/admin" element={<Navigate to="/login?admin=1" replace />} />
-          <Route path="/checkout/return" element={<ProtectedRoute><CheckoutReturn /></ProtectedRoute>} />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
+        <AnimatedRoutes />
       </BrowserRouter>
     </AuthProvider>
   );
