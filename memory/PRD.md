@@ -1,106 +1,177 @@
 # Corner Streams — Product Requirements Document
 
-## Original problem statement
-Corner Streams is a SaaS for Nigerian schools — "Taking away the paper trap." Cloud DB for Student Bio, Academic Engine (CA + Exam, 100-pt), Financial Ledger (Stripe + bank transfers, balances, Debt Lock), Super Admin "God Mode" with kill-switch and password override, dynamic pricing UI with 1/2/3 Term toggle, bulk Excel onboarding, Digital Reports with passport, 5-star skills, principal signature & QR verification, contact-us routing to thecornerstreams@gmail.com, PWA / offline-first, plus CBT exams and student logins (Phase-2).
+_Last updated: Feb 10, 2026_
 
-Brand: Deep Navy #002147, Vibrant Green #28A745, Electric Blue #0056B3. Visuals must depict Nigerian/African students/teachers/parents.
+## Original Problem Statement
+Corner Streams is a SaaS for Nigerian schools — **"Taking away the paper trap."**
 
-## User personas
-- **Super Admin** — Corner Streams operator with global control (kill-switch, password override, leads, receipt verification).
-- **School Admin** — principal/owner who registers a school, onboards students, pays for tier, monitors balances, configures subjects per class, provisions student logins.
-- **Teacher** — enters CA + Exam scores and 5-star skill ratings per term/year; creates and publishes CBT MCQ exams.
-- **Parent** — views child's digital report card and fee balance; locked out by Debt Lock when balance > 0.
-- **Student (Phase-2)** — logs in with admin-provisioned credentials, sees class subjects, takes timed CBT exams, views own term result.
+Cloud spine for Student Bio, Academic Engine (CA + Exam, 100-pt), Financial Ledger (Stripe + bank transfers, balances, Debt Lock), Super Admin "God Mode" with kill-switch and password override, dynamic pricing UI with 1/2/Full-Session toggle, bulk Excel onboarding, Digital Reports with passport, 5-star skills, principal signature & QR verification, contact-us routing to thecornerstreams@gmail.com, PWA / offline-first, plus CBT exams and student logins.
 
-## Core requirements (static)
-- 5 roles with JWT custom auth, all routes /api prefixed, MongoDB string IDs (no ObjectId in responses).
-- Pricing tiers (NGN): CBT Essentials 40k/70k/110k · Digital Reports 50k/90k/140k · Financial Ledger 40k/70k/110k · Unified Enterprise 200k (Full Session only).
-- Stripe checkout (test, sk_test_emergent), NGN→USD at fixed 1500.
-- Bank-transfer receipt upload + super-admin verify queue.
-- Digital report card: passport, CA(40)+Exam(60)→Total/Grade, skill ratings, principal signature (script font), QR code.
-- Debt Lock: parent + student-only; blocks Result Checker if balance_due > 0.
-- Kill-switch: blocks school-side login (school_admin/teacher/parent/student) but allows super_admin.
-- CBT MCQ exams: 4 options, auto-graded; CBT score auto-fills the Exam (60-pt) column AND keeps raw CBT log (source: 'cbt' in scores doc).
+**Brand:** Deep Navy `#002147`, Vibrant Green `#28A745`, Electric Blue `#0056B3`. Visuals depict Nigerian/African students/teachers/parents.
+
+**Founder:** Mervydean Hilary (6 years in the classroom).
+
+---
+
+## User Personas
+- **Super Admin** — Corner Streams operator with global control (kill-switch, password override, leads, receipt verification, analytics).
+- **School Admin** — principal/owner who registers a school, onboards students, pays for tier, monitors balances, configures subjects per class, provisions teacher/parent/student logins.
+- **Teacher** — enters CA (30) + Exam (70) scores and 5-star skill ratings per term/year; creates and publishes CBT MCQ exams.
+- **Parent** — views child's digital report card and fee balance; locked out by Debt Lock when `balance_due > 0`.
+- **Student** — logs in with admin-provisioned credentials, sees class subjects, takes timed CBT exams, views own term and annual reports.
+
+---
+
+## Core Requirements (static)
+- 5 roles with JWT custom auth, all backend routes `/api/*` prefixed, MongoDB string IDs (no ObjectId in JSON responses).
+- Pricing tiers (NGN, hard-coded):
+  - CBT Essentials   `40k / 70k / 110k` (1 Term / 2 Terms / Full Session)
+  - Digital Reports  `50k / 90k / 140k`
+  - Financial Ledger `40k / 70k / 110k`
+  - Unified Enterprise `200k` (Full Session only)
+- Stripe checkout (test, `sk_test_emergent`); NGN→USD at fixed 1500.
+- Bank-transfer receipt upload + Super Admin verify queue.
+- Digital report card: passport, CA(30)+Exam(70)→Total/Grade, 5-star skills, principal signature (script font), QR seal.
+- Debt Lock: parent + student-only; blocks Result Checker if `balance_due > 0`.
+- Kill-switch: blocks school-side login (school_admin/teacher/parent/student); Super Admin always allowed.
+- CBT MCQ exams: 4 options, auto-graded; CBT score auto-fills the Exam (70-pt) column AND keeps a raw CBT log (`source: 'cbt'` in scores).
 - Subjects scoped per class.
+- Subdomain routing: `admin.cornerstreams.com` → Super Admin login.
 
-## Phase-1 implemented (Feb 2026)
-- ✅ Backend FastAPI with modular routers + MongoDB indexes + idempotent demo data seeding.
-- ✅ JWT auth (httpOnly cookie + Bearer header).
-- ✅ Bulk Excel student upload, score & skill batch upserts, auto-grade A–F.
-- ✅ Digital Report Card endpoint with QR + Debt Lock.
-- ✅ Stripe checkout via emergentintegrations + direct stripe SDK fallback for metadata bug.
-- ✅ Bank receipt upload + super-admin approve/reject; auto-activates subscription.
-- ✅ Super Admin: kill-switch, password override, leads, stats.
-- ✅ React frontend with Outfit + IBM Plex Sans typography, brand palette, Nigerian imagery.
-- ✅ Landing page (hero, features, pricing toggle 1T/2T/Full, testimonials, contact).
-- ✅ Login / Register, all dashboards (school admin / teacher / parent / super admin), Report Card with QR.
-- ✅ 30/30 Phase-1 backend tests passing.
+---
 
-## Phase-2 implemented (Feb 2026)
-- ✅ **Student role** with login (`/api/auth/login`, `/api/students/me`).
-- ✅ **Subject management per class** — `/api/subjects` (GET/PUT/DELETE).
-- ✅ **CBT MCQ engine** — `/api/cbt/exams` CRUD, publish/unpublish, attempts start/submit (auto-graded).
-- ✅ **CBT auto-fills Exam column** — submit converts % to /60 score, preserves CA, recomputes total/grade, tags `source='cbt'`.
-- ✅ **One-shot exam attempts** — repeated submit returns 400; cross-student submit returns 403.
-- ✅ **Student dashboard** — passport card, subjects grid, CBT cards (Take exam / Done with %), Result Checker with Debt Lock.
-- ✅ **CBT take page** — sticky countdown timer, question palette, option select with brand styling, submit confirm dialog, post-submit results screen.
-- ✅ **Teacher dashboard CBT tab** — exam library, dynamic MCQ builder dialog (mark correct option), publish toggle, attempts viewer with student names.
-- ✅ **School admin dashboard** — Subjects tab (per-class management), passport thumbnail per student row, "Create login" button per student row.
-- ✅ **Passport upload** — base64 data URL stored on student doc; rendered in report card + student dashboard.
-- ✅ **PWA** — manifest.json (theme #002147, logo icon, standalone), basic service worker (cache app shell, never cache /api).
-- ✅ Demo seed updated: class_subjects for JSS 1, sample published CBT (5 MCQs), student login `adaeze@demo.school` / `Student@123`.
-- ✅ 45/45 backend tests passing (30 Phase-1 + 15 Phase-2).
-- ⏭️ **Deferred**: offline CBT cache (per your choice — PWA shell only).
-- ⏭️ **Deferred**: live email out for Contact Us (per your choice — DB-only).
+## ✅ What's Implemented (as of Feb 10, 2026)
 
-## Phase-3 implemented (Feb 2026 — addresses user pushback)
-- ✅ **Public registration is school-admin only** — teachers/parents/students can no longer self-register; schools build their own personnel from inside the dashboard.
-- ✅ **Setup checklist** on the school admin Overview tab — visual progress bar with 7 actionable steps so a fresh school can immediately test every flow.
-- ✅ **School Profile builder tab** — logo upload, motto, address, phone, email, founded year, website. Renders on report cards.
-- ✅ **Users tab** — school admin creates/deletes teacher and parent logins (`POST /api/users`, `DELETE /api/users/{id}`).
-- ✅ **Eye/EyeOff password toggle** on every password input (PasswordInput component).
-- ✅ **Scroll-reveal animations** on landing page (Intersection Observer + CSS) + button micro-interactions (`.btn-anim` lift on hover, scale on press).
-- ✅ **Subdomain routing** for `admin.cornerstreams.com` — host check forces super-admin entry; `/admin` route as fallback (`/login?admin=1`).
-- ✅ **Annual cumulative report** — `GET /api/reports/annual/{student_id}?year=2025/2026` returns 3-term subject matrix, session average, promotion status (Promoted to next class / Repeat current class), aggregated skill ratings, QR. Frontend route: `/report/annual/:studentId`. Buttons added to Parent Portal + Student Dashboard.
-- ✅ All 45/45 tests still passing (phase-1 register-parent test updated to assert new 422 behavior).
+### Auth & Multi-tenant Foundation
+- JWT auth (httpOnly cookie + Bearer header)
+- 5 roles seeded by `db.py` on backend boot (idempotent)
+- Multi-tenant `school_id` scoping on all routers
+- Public registration creates **School Admins only**; teachers/parents/students are created from inside the School Admin dashboard
 
-## Phase-4 implemented (Feb 2026 — autonomous "make it productive" pass)
-- ✅ **Recharts wired across all admin sections** (brand colors only — Navy / Green / Electric Blue):
-  - **Super Admin** — Analytics tab: school growth area chart (6 months), subscription tier donut, receipts pipeline bar, leads funnel bar, payment volume tile.
-  - **School Admin Overview** — students-per-class bar, debt distribution donut, gender split donut, CBT activity area, subject averages bar.
-  - **Parent Portal** — per-child term progression line chart (loaded inline below each child card when fees are clear).
-  - **Student Dashboard** — personal term progression line + subject snapshot radar chart.
-- ✅ **CBT post-submit review** — `GET /api/cbt/attempts/{id}/review` returns full Q&A with correct answers + student picks. Frontend `/cbt/review/:attemptId` page colors correct vs. wrong, surfaced from the take-result screen and as a "Review answers" button on every completed exam card.
-- ✅ **Welcome Pack** — `/welcome-pack` route: print-ready A4 onboarding pack with school logo + motto, teacher list, parent portal directory, tear-off student login slips. One-click PDF via browser print.
-- ✅ **`/api/analytics/super`, `/api/analytics/school`, `/api/analytics/student/{id}`** — three aggregation endpoints with role-scoped data.
-- ✅ All 45/45 backend tests still passing. Frontend lint clean.
+### School Admin Dashboard
+- Tabs: Overview · Profile · Users · Students · Subjects · Subscription · Receipts (mobile horizontal-swipe)
+- Setup checklist on Overview
+- School Profile builder (logo, motto, address, phone, email, principal_name, founded_year, website)
+- Users tab: create teachers/parents (assigned_class for teachers)
+- Bulk Excel student upload
+- Subjects tab: per-class subject management
+- Subscription tab: live tier status + Stripe checkout
+- Receipts tab: upload bank-transfer slips for Super Admin verification
 
-## Demo accounts (seeded)
+### Teacher Dashboard
+- Score entry (CA 30 + Exam 70 → Total/Grade) per term/year
+- 5-star skill ratings (punctuality, neatness, leadership, sports, honesty, participation)
+- CBT MCQ builder (4 options, timer, publish toggle)
+- Recharts analytics on student averages
+
+### Parent Portal
+- View child's term report card (PDF with QR)
+- View child's progression (Recharts line chart)
+- Annual cumulative session report
+- Debt Lock: blocks report view if `balance_due > 0`
+
+### Student Dashboard
+- View own subjects per class
+- Take published CBT exams (timer + question palette, one-shot attempts)
+- View own term + annual reports
+- CBT post-submit review screen (correct vs. wrong colouring)
+- Welcome Pack (print-ready A4)
+
+### Super Admin "God Mode"
+- Kill-switch (blocks school-side logins)
+- Password override (reset any user's password)
+- Lead pipeline (Contact Us submissions)
+- Receipt verification queue
+- Global analytics (Recharts)
+
+### Landing Page (public)
+- Hero: "Taking away the paper trap" with Nigerian classroom image
+- Features grid (6 cards: Bulk Onboarding, Automated Engine, Debt Lock, QR PDFs, God Mode, Offline-First CBT)
+- **Samples** section — 3 downloadable jsPDF previews:
+  - Term Report Card (CA/Exam, position, 5-star skills, principal's remark, QR)
+  - CBT Examination Script (auto-graded MCQs, candidate answers vs. keys, ledger sync)
+  - Financial Statement (Stripe+Bank+Cash entries, inflow/outflow, net position, debtors)
+- **About Us** — founder photo of Mervydean Hilary + founder story + 3 stat cards
+- Pricing (3 tiers × 3 durations toggle)
+- Testimonials (teacher, principal, parent)
+- Contact form (saves leads to DB; live email-out NOT yet wired)
+- Footer with WhatsApp + email
+
+### Marketing / Polish
+- BETA badge in Navbar (hidden on smallest screens)
+- Favicon, apple-touch-icon, Open Graph meta tags (clean WhatsApp/Twitter previews)
+- Mobile responsiveness pass (no horizontal overflow at 390px)
+- PWA basics (`manifest.json` + `sw.js`)
+
+---
+
+## 📁 Code Architecture
+
+```
+/app/
+├── backend/
+│   ├── server.py              # FastAPI entry, mounts all routers under /api
+│   ├── db.py                  # Motor + demo data seeding (idempotent)
+│   ├── auth_utils.py          # JWT + require_roles dependency
+│   └── routers/               # auth, users, schools, students, subjects,
+│                              # scores, reports, payments, cbt, cbt_review,
+│                              # analytics, leads, superadmin
+├── frontend/
+│   ├── public/                # manifest.json, sw.js, icons
+│   └── src/
+│       ├── pages/             # Landing, Login, Register, dashboards (5 roles),
+│       │                      # CBTTake, CBTReview, ReportCard, AnnualReport,
+│       │                      # WelcomePack, CheckoutReturn
+│       ├── components/        # Navbar, Logo, Charts/*, PasswordInput, ui/ (shadcn)
+│       └── lib/               # api.js, auth.jsx, useReveal.js, samplePdfs.js
+└── memory/                    # PRD.md, test_credentials.md
+```
+
+---
+
+## 🔜 Pending / Roadmap
+
+### 🟡 P1 — Waiting on user keys / decisions
+1. **Stripe → Paystack migration** — Stripe doesn't settle NGN, no Verve cards, no Nigerian bank transfers. Awaiting Paystack public + secret keys from `dashboard.paystack.com → Settings → API Keys`. User has not created Paystack account yet.
+2. **WhatsApp Cloud API** — Send reports/receipts to parent phones. Needs Meta credentials: `WHATSAPP_ACCESS_TOKEN`, `PHONE_NUMBER_ID`, `BUSINESS_ACCOUNT_ID`, `VERIFY_TOKEN`.
+3. **Live email-out for Contact Us** — currently saves to DB only. Recommended: Resend or SendGrid → routes to `thecornerstreams@gmail.com`.
+4. **Full regression test** — testing_agent_v3_fork across all 5 dashboards before production deploy.
+
+### 🟢 P2 / Backlog
+- Twilio SMS / WhatsApp churn alerts for Super Admin
+- Offline CBT cache (service worker + IndexedDB)
+- True/False CBT question type (currently MCQ only)
+- `school_type` field (primary / secondary / mixed) with auto-seeded class roster
+- Audit log infrastructure (~10 event types) + Activity tab in School Admin dashboard
+- Excel template download endpoints (students / teachers / cbt-questions)
+- Bulk teacher upload endpoint + UI
+- Per-student subject overrides (currently per-class only)
+- Report card polish: teacher comments, head-teacher comments, class position, attendance, school logo on PDF
+- Refactor `SchoolAdminDashboard.jsx` into per-tab components
+- Multi-language (Yoruba / Hausa / Igbo)
+
+---
+
+## 🚫 Critical Rules (don't break)
+- All backend routes MUST be `/api/*` prefixed (k8s ingress only routes /api → :8001)
+- Frontend MUST use `process.env.REACT_APP_BACKEND_URL` (never hard-code)
+- Backend MUST use `os.environ.get('MONGO_URL')` + `DB_NAME` (never hard-code)
+- Always exclude `{"_id": 0}` from Mongo queries — never return ObjectId
+- Use `datetime.now(timezone.utc)`, never `datetime.utcnow()`
+- Multi-tenant isolation: every router must filter by `user.school_id`
+- Public registration creates School Admins only
+- All interactive elements need `data-testid` (kebab-case, descriptive)
+
+---
+
+## 🧪 Demo Accounts (auto-seeded by `db.py`)
+
 | Role | Email | Password |
 |---|---|---|
-| Super admin | super@cornerstreams.com | Super@123 |
-| School admin | admin@demo.school | Admin@123 |
-| Teacher | teacher@demo.school | Teacher@123 |
-| Parent | parent@demo.school | Parent@123 |
-| **Student** | **adaeze@demo.school** | **Student@123** |
+| Super Admin | `super@cornerstreams.com` | `Super@123` |
+| School Admin | `admin@demo.school` | `Admin@123` |
+| Teacher | `teacher@demo.school` | `Teacher@123` |
+| Parent | `parent@demo.school` | `Parent@123` |
+| Student | `adaeze@demo.school` | `Student@123` |
 
-## Backlog (P0/P1/P2)
-
-### P0 — important next-up
-- Live email-out for Contact Us → thecornerstreams@gmail.com (Resend / SendGrid).
-- Offline CBT cache (deferred from Phase-2).
-- Multi-class support: more than just JSS 1 (admin already has tools — needs roster expansion).
-
-### P1 — significant features
-- CBT question types: True/False, image-based, short-text.
-- Per-student subject overrides (currently per-class).
-- Annual session report (combined 1st/2nd/3rd term cumulative average).
-- Stripe webhook signature verification + production NGN multi-currency support.
-- Student attempt review screen (see correct answers after submission).
-
-### P2 — nice-to-have
-- Per-student notes / teacher comments on reports.
-- Subscription auto-renewal reminders.
-- Email/SMS notifications when balance is cleared (auto-Debt-Lock release).
-- Audit log of super-admin actions.
-- CBT exam randomization / question shuffling.
+Verified working: all return HTTP 200 on `POST /api/auth/login` (Feb 10, 2026).
