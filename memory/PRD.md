@@ -109,7 +109,42 @@ Brand: Deep Navy #002147, Vibrant Green #28A745, Electric Blue #0056B3. Visuals 
 
 ## Backlog (P0/P1/P2)
 
-### P0 — important next-up
+### P0 — USER FEEDBACK from Feb 2026 testing session (NEXT-UP, prioritized)
+**Pagination**
+- ❗ Add pagination (page navigation when rows exceed 10–15) to EVERY table/list: Users tab, Students tab, Subjects, CBT exams, Leads, Receipts, Audit/Activity, Parent's children list, etc.
+
+**Admin powers safety (Test 4 feedback)**
+- ❗ **2FA for admin-power actions** — when an admin performs destructive/sensitive actions (Delete user, Promote, Demote, Reset password, Kill-switch toggle, Receipt approval), require an extra confirmation step:
+  - Step 1: confirmation pop-up with action summary (NOT a left-side notification — must be a centered modal like Bulk upload dialog).
+  - Step 2: Delete button must offer choices: **Pause / Restrict / Archive / Save** instead of permanent delete, so no client data is ever truly lost. Hard-delete should require typing user email.
+- ❗ **Dual-role landing for promoted users** — after a teacher is promoted, on login they should see **two clickable cards**: "Access Admin Dashboard" + "Access Teacher Dashboard" — picking one routes accordingly. Navbar should keep both available.
+
+**Teacher dashboard scoping (BIG — ATTENTION flagged by user)**
+- ❗ **Subject teachers must only see students they teach** — currently teachers see all students in their `assigned_class`. New rule: a teacher is linked to (class, subject) pairs; on the Scores/Reports tab they can only enter scores for THEIR subject(s) and only for students in classes where they teach that subject.
+- ❗ **Report cards are inputted ONLY by the teacher who teaches that child for that subject** — score input must be locked per teacher×subject×class.
+- ❗ **"All Classes" / "Term" filter buttons currently throw errors** — needs fixing.
+
+**School Admin activity feed (Test 9 feedback)**
+- ❗ **Activity tab on School Admin dashboard** — render the existing `/api/audit` events so school admin sees: receipts uploaded, new admins created, password resets, promotions, bulk uploads, kill-switch toggles, etc.
+- ❗ **Receipt history per school** — school admin sees their own receipts list (status pending/approved/rejected) — not just super admin.
+
+**Navbar UX**
+- ❗ When clicking the top-right avatar, the dropdown menu must open **directly under the avatar** (right-aligned), NOT on the far left of the screen.
+
+**Report card upgrades (Test 7 — user says previous directions were missed)**
+- ❗ School logo top-left of report card.
+- ❗ Principal's comment + Teacher's comment text fields per student per term.
+- ❗ Auto-remarks based on grade (e.g., A → "Outstanding"; F → "Needs urgent help").
+- ❗ "Subjects scored: X of Y" summary line.
+- ❗ Bordered boxes, consistent navy headers, visual upgrade.
+
+**Parent Portal (Test 8 — Failed: nothing showed as directed)**
+- ❗ Debug why parent@demo.school's children list, term progression chart, and report card buttons did not render. Verify `/api/parent/children` and seed data.
+
+**Bank-transfer payments (interim, no Paystack yet)**
+- ❗ Display configurable personal bank account (account name, number, bank) on the Pricing/Checkout page. Schools transfer NGN to that account, upload receipt, super admin approves → activates subscription. This flow already exists in code (Phase-1 ✅) — just needs the bank-details editor in Super Admin dashboard so user can plug in his personal account TODAY without Paystack/Flutterwave.
+
+### P0 — pre-existing (still valid)
 - Live email-out for Contact Us → thecornerstreams@gmail.com (Resend / SendGrid).
 - Offline CBT cache (deferred from Phase-2).
 - Multi-class support: more than just JSS 1 (admin already has tools — needs roster expansion).
