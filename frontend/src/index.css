@@ -110,8 +110,16 @@ h1, h2, h3, h4, h5, h6, .font-display {
   color: var(--cs-text-muted);
   transition: background-color 200ms, color 200ms;
 }
+.pill-toggle button:hover:not(.active) {
+  background: rgba(40, 167, 69, 0.08);
+  color: var(--cs-navy);
+}
 .pill-toggle button.active {
-  background: var(--cs-blue);
+  background: var(--cs-navy);
+  color: white;
+}
+.pill-toggle button.active:hover {
+  background: var(--cs-green);
   color: white;
 }
 

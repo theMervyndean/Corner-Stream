@@ -19,6 +19,8 @@ class RegisterIn(BaseModel):
     principal_name: Optional[str] = None
     school_phone: Optional[str] = None
     school_address: Optional[str] = None
+    brand_color: Optional[str] = Field(default="#002147", pattern=r"^#[0-9a-fA-F]{6}$")
+    logo_url: Optional[str] = None
 
 
 class LoginIn(BaseModel):
@@ -64,7 +66,8 @@ async def register(payload: RegisterIn, response: Response):
         "phone": payload.school_phone or "",
         "email": email,
         "motto": "",
-        "logo_url": "",
+        "logo_url": payload.logo_url or "",
+        "brand_color": payload.brand_color or "#002147",
         "founded_year": "",
         "website": "",
         "kill_switch": False,

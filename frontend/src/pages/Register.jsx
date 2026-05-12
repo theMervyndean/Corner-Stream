@@ -15,11 +15,21 @@ export default function Register() {
   const [params] = useSearchParams();
   const [form, setForm] = useState({
     school_name: "", school_type: "secondary", principal_name: "", school_address: "", school_phone: "",
+    brand_color: "#002147", logo_url: "",
     name: "", email: "", password: "",
   });
   const [submitting, setSubmitting] = useState(false);
   const tier = params.get("tier");
   const duration = params.get("duration");
+
+  const onLogoFile = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 600 * 1024) { toast.error("Logo too large (max 600KB)"); return; }
+    const reader = new FileReader();
+    reader.onload = () => setForm((f) => ({ ...f, logo_url: reader.result }));
+    reader.readAsDataURL(file);
+  };
 
   const submit = async (e) => {
     e.preventDefault();
@@ -87,6 +97,37 @@ export default function Register() {
                 <div><Label htmlFor="pn">Principal name</Label><Input id="pn" value={form.principal_name} onChange={(e) => setForm({ ...form, principal_name: e.target.value })} data-testid="register-principal" /></div>
                 <div><Label htmlFor="sp">Phone / WhatsApp</Label><Input id="sp" placeholder="+234..." value={form.school_phone} onChange={(e) => setForm({ ...form, school_phone: e.target.value })} data-testid="register-phone" /></div>
                 <div className="sm:col-span-2"><Label htmlFor="sa">Address</Label><Input id="sa" placeholder="Street, City, State" value={form.school_address} onChange={(e) => setForm({ ...form, school_address: e.target.value })} data-testid="register-address" /></div>
+                <div className="sm:col-span-2">
+                  <Label>School branding (used on all report documents)</Label>
+                  <div className="mt-2 grid sm:grid-cols-2 gap-4">
+                    <div>
+                      <div className="text-xs text-slate-500 mb-1">Brand color (HEX)</div>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="color"
+                          value={form.brand_color}
+                          onChange={(e) => setForm({ ...form, brand_color: e.target.value })}
+                          className="h-10 w-12 rounded-md border border-slate-200 cursor-pointer"
+                          data-testid="register-brand-color"
+                        />
+                        <Input
+                          value={form.brand_color}
+                          onChange={(e) => setForm({ ...form, brand_color: e.target.value })}
+                          placeholder="#002147"
+                          className="font-mono"
+                          data-testid="register-brand-color-hex"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-slate-500 mb-1">School logo (PNG/JPG · max 600KB)</div>
+                      <div className="flex items-center gap-3">
+                        <input type="file" accept="image/*" onChange={onLogoFile} className="text-sm" data-testid="register-logo-file" />
+                        {form.logo_url && <img src={form.logo_url} alt="logo preview" className="h-10 w-10 rounded object-cover border border-slate-200" data-testid="register-logo-preview" />}
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
 

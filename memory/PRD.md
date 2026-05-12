@@ -110,6 +110,33 @@ Brand: Deep Navy #002147, Vibrant Green #28A745, Electric Blue #0056B3. Visuals 
 ## Backlog (P0/P1/P2)
 
 ### P0 — USER FEEDBACK from Feb 2026 testing session (NEXT-UP, prioritized)
+
+**🔒 CRITICAL — Payment gate before any dashboard access (top priority)**
+- ❗ **NEW FLOW**: Schools must NOT access ANY dashboard until paid + verified.
+  1. Register school info → no auto-login.
+  2. Choose tier + duration → bank-transfer page with UBA / 2936722942 / Mervyndean Ifeanyichukwu Hilary details.
+  3. School transfers NGN → uploads receipt + types in WhatsApp verification code received from +2348141880550.
+  4. Code is sent manually (or via WhatsApp Cloud API once integrated) by Mervyn after he sees the transfer in his bank app.
+  5. School enters the code on a verification page; receipt also uploaded.
+  6. Super Admin sees pending receipts + matching codes in his dashboard.
+  7. Super Admin approves → school's first admin login becomes ACTIVE → dashboard unlocks.
+  8. Until then: every login attempt returns "Awaiting payment verification — please complete bank transfer & enter your WhatsApp code".
+- ❗ **Backend changes needed**:
+  - `users` collection: add `verification_status` field ("pending_payment" | "pending_code" | "active" | "rejected"); default new school admins to "pending_payment".
+  - New endpoint `POST /api/auth/request-verification` (school enters bank-transfer details + code).
+  - New endpoint `POST /api/superadmin/verification-codes` (Mervyn generates + sees code per pending school).
+  - Login endpoint must check `verification_status == "active"` else reject with 403 + clear message.
+  - Add `whatsapp_phone` to school registration so Mervyn knows where to WhatsApp the code.
+- ❗ **Frontend changes needed**:
+  - Register flow: Step 1 (school details) → Step 2 (pick tier) → Step 3 (bank transfer details + upload receipt) → Step 4 (enter WhatsApp code received from +2348141880550) → "Pending approval" screen.
+  - Super Admin dashboard: new "Verification queue" tab — generate codes, mark approved/rejected, view receipts side-by-side.
+
+**✅ School branding (DONE Feb 2026)**
+- Registration now collects `brand_color` (HEX) + `logo_url` (base64 PNG/JPG, max 600KB), stored on school doc. NEXT: ReportCard.jsx + AnnualReport.jsx must read `school.brand_color` for headers/borders and `school.logo_url` for the top-left logo (already P0-#10 below).
+
+**✅ Brand color in UI toggles (DONE Feb 2026)**
+- `.pill-toggle` active state changed from Electric Blue to brand Navy with green hover.
+
 **Pagination**
 - ❗ Add pagination (page navigation when rows exceed 10–15) to EVERY table/list: Users tab, Students tab, Subjects, CBT exams, Leads, Receipts, Audit/Activity, Parent's children list, etc.
 
