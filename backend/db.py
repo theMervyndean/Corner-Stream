@@ -288,9 +288,9 @@ async def seed_demo_data():
             new_qs.append(q)
         await db.cbt_exams.update_one({"id": ex["id"]}, {"$set": {"questions": new_qs}})
 
-    # Backfill demo seeded users' auto-password (so "Reveal password" works for
-    # the demo accounts without resetting them). Only touch known demo accounts
-    # — production users created via /register or /users won't be backfilled.
+    # Backfill demo seeded users' auto-password + password_hash on every restart
+    # so that any automated tests / manual resets to demo accounts don't break
+    # the documented demo credentials. Only touches the 5 hard-coded demo emails.
     demo_seed_passwords = {
         super_email: super_pw,
         "admin@demo.school": "Admin@123",
@@ -300,18 +300,11 @@ async def seed_demo_data():
     }
     for email_, pw_ in demo_seed_passwords.items():
         await db.users.update_one(
-            {"email": email_, "auto_password_encrypted": {"$in": [None, ""]}},
+            {"email": email_},
             {"$set": {
+                "password_hash": hash_password(pw_),
                 "auto_password_encrypted": encrypt_password(pw_),
                 "password_changed_by_user": False,
-            }},
-        )
-    # Also handle docs where the field doesn't exist at all
-    for email_, pw_ in demo_seed_passwords.items():
-        await db.users.update_one(
-            {"email": email_, "auto_password_encrypted": {"$exists": False}},
-            {"$set": {
-                "auto_password_encrypted": encrypt_password(pw_),
-                "password_changed_by_user": False,
+                "is_admin": False,
             }},
         )

@@ -232,6 +232,14 @@ button:disabled {
   cursor: not-allowed;
 }
 
+/* Opt-out class for icon buttons that must stay perfectly positioned
+ * (e.g., password-eye toggle, close icons, table-row action icons). */
+button.cs-noflip,
+button.cs-noflip:hover,
+button.cs-noflip:active {
+  transform: none !important;
+}
+
 /* Stronger .btn-anim override for primary CTAs */
 .btn-anim {
   transition:
