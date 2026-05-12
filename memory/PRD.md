@@ -142,7 +142,11 @@ Brand: Deep Navy #002147, Vibrant Green #28A745, Electric Blue #0056B3. Visuals 
 - ❗ Debug why parent@demo.school's children list, term progression chart, and report card buttons did not render. Verify `/api/parent/children` and seed data.
 
 **Bank-transfer payments (interim, no Paystack yet)**
-- ✅ **DONE Feb 2026** — UBA / 2936722942 / Mervyndean Ifeanyichukwu Hilary displayed on Landing pricing section + inside School Admin "Upload bank receipt" dialog, with WhatsApp +2348141880550 confirmation note. Receipt upload → super-admin verify queue flow already wired.
+- ✅ **DONE Feb 2026** — UBA / 2936722942 / Mervyndean Ifeanyichukwu Hilary displayed INSIDE School Admin "Upload bank receipt" dialog only (not on public landing). "Pay by bank transfer" is now the primary CTA on every tier card and pre-fills tier + price. Note field renamed to "School name + Sender's name (for validation)" and made mandatory. WhatsApp +2348141880550 noted for confirmation. Receipt upload → super-admin verify queue flow wired.
+- ❗ **STILL TODO (next session)**:
+  1. **Move payment INTO registration flow** — current: Register → Dashboard (free) → Subscription tab. Desired: Register school info → Choose tier → Bank-transfer page with account details → Upload receipt → Account pending until superadmin approval → THEN credentials accepted + dashboard unlocked. Multi-step wizard component.
+  2. **Email-out of every uploaded receipt** to `thecornerstreams@gmail.com` (BLOCKED — needs Resend/SendGrid API key).
+  3. **New-school onboarding directions on dashboard** — setup checklist already exists in code (Phase-3 Setup Checklist). Make each button on it clickable to walk admin through every step (Subjects → Students → Teachers → Parents → CBT → Reports). Each step opens its respective dialog/tab automatically.
 
 ### P0 — pre-existing (still valid)
 - Live email-out for Contact Us → thecornerstreams@gmail.com (Resend / SendGrid).

@@ -300,6 +300,7 @@ export default function SchoolAdminDashboard() {
 
   const submitBank = async () => {
     if (!bankForm.file_data_url) { toast.error("Attach receipt image/PDF"); return; }
+    if (!bankForm.note || bankForm.note.trim().length < 4) { toast.error("Add school name + sender's name for validation"); return; }
     try {
       await api.post("/payments/bank-receipt", bankForm);
       toast.success("Receipt submitted. Super Admin will verify shortly.");
@@ -896,16 +897,21 @@ export default function SchoolAdminDashboard() {
                         <div className="text-sm text-slate-400 italic">Full Session only</div>
                       )}
                     </div>
-                    <Button disabled={!price} onClick={() => startCheckout(k)} className="mt-5 cs-bg-green text-white rounded-full hover:opacity-90" data-testid={`subscribe-btn-${k}`}>
-                      Pay with card <ArrowRight size={16} className="ml-2" />
+                    <Button
+                      disabled={!price}
+                      onClick={() => { if (price) { setBankForm((f) => ({ ...f, tier: k, duration: dur, amount_ngn: price })); setBankDlg(true); } }}
+                      className="mt-5 cs-bg-green text-white rounded-full hover:opacity-90"
+                      data-testid={`subscribe-btn-${k}`}
+                    >
+                      Pay by bank transfer <ArrowRight size={16} className="ml-2" />
                     </Button>
                   </div>
                 );
               })}
             </div>
             <div className="mt-8 cs-card p-6">
-              <h3 className="font-display font-semibold cs-text-navy text-lg">Prefer bank transfer?</h3>
-              <p className="text-sm text-slate-500 mt-1">Upload your Nigerian bank transfer slip — Super Admin verifies in hours.</p>
+              <h3 className="font-display font-semibold cs-text-navy text-lg">Already paid by transfer?</h3>
+              <p className="text-sm text-slate-500 mt-1">Upload your Nigerian bank transfer receipt — Super Admin verifies within hours and activates your subscription.</p>
               <Button onClick={() => setBankDlg(true)} className="mt-4 cs-bg-navy text-white hover:opacity-90 rounded-full" data-testid="open-bank-dlg">Upload bank receipt</Button>
             </div>
           </TabsContent>
@@ -986,8 +992,8 @@ export default function SchoolAdminDashboard() {
                 <div className="flex justify-between"><span className="text-slate-600">Bank</span><span className="font-semibold cs-text-navy">United Bank of Africa (UBA)</span></div>
                 <div className="flex justify-between"><span className="text-slate-600">Account Name</span><span className="font-semibold cs-text-navy text-right">Mervyndean Ifeanyichukwu Hilary</span></div>
               </div>
-              <div className="mt-3 pt-3 border-t border-green-200 text-[11px] text-slate-600 leading-relaxed">
-                We're working on our Paystack integration — these details will update soon. For confirmation, WhatsApp or call <a href="tel:+2348141880550" className="font-semibold cs-text-green">+234 814 188 0550</a>.
+              <div className="mt-3 pt-3 border-t border-green-200 text-[12px] text-slate-700 leading-relaxed">
+                <span className="font-semibold cs-text-navy">Add the name of school and sender's name for validation.</span> We're working on our Paystack integration — these details will update soon. For confirmation, WhatsApp or call <a href="tel:+2348141880550" className="font-semibold cs-text-green">+234 814 188 0550</a>.
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
@@ -1012,7 +1018,7 @@ export default function SchoolAdminDashboard() {
               <Input type="file" accept="image/*,.pdf" onChange={onReceiptFile} data-testid="bank-file" />
               {bankForm.file_data_url && <div className="text-xs cs-text-green mt-1">Attached.</div>}
             </div>
-            <div><Label>Note (optional)</Label><Input value={bankForm.note} onChange={(e) => setBankForm({ ...bankForm, note: e.target.value })} data-testid="bank-note" /></div>
+            <div><Label>School name + Sender's name (for validation) *</Label><Input value={bankForm.note} onChange={(e) => setBankForm({ ...bankForm, note: e.target.value })} placeholder="e.g. Sunrise Academy — paid by Chinedu Eze" data-testid="bank-note" /></div>
           </div>
           <DialogFooter><Button onClick={submitBank} className="cs-bg-green text-white hover:opacity-90" data-testid="bank-submit">Submit receipt</Button></DialogFooter>
         </DialogContent>

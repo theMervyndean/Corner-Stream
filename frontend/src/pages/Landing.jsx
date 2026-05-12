@@ -315,26 +315,6 @@ export default function Landing() {
               );
             })}
           </div>
-          {/* BANK TRANSFER NOTICE */}
-          <div className="mt-12 max-w-3xl mx-auto" data-testid="landing-bank-details">
-            <div className="cs-card p-7 border-2 border-[#28A745]/30">
-              <div className="flex items-start gap-4">
-                <div className="w-10 h-10 rounded-full cs-bg-green text-white flex items-center justify-center font-bold shrink-0">₦</div>
-                <div className="flex-1">
-                  <h3 className="font-display font-semibold cs-text-navy text-lg">Pay by Nigerian bank transfer</h3>
-                  <p className="text-sm text-slate-600 mt-1">Transfer your tier amount to the account below, then upload your receipt inside your school dashboard. Super Admin verifies in hours.</p>
-                  <div className="mt-4 grid sm:grid-cols-3 gap-3 text-sm">
-                    <div className="rounded-lg bg-[#F8FAFC] p-3"><div className="text-[11px] uppercase tracking-wider text-slate-500">Account Number</div><div className="font-mono font-bold cs-text-navy text-base mt-1">2936722942</div></div>
-                    <div className="rounded-lg bg-[#F8FAFC] p-3"><div className="text-[11px] uppercase tracking-wider text-slate-500">Bank</div><div className="font-semibold cs-text-navy mt-1">UBA</div></div>
-                    <div className="rounded-lg bg-[#F8FAFC] p-3"><div className="text-[11px] uppercase tracking-wider text-slate-500">Account Name</div><div className="font-semibold cs-text-navy mt-1 leading-tight">Mervyndean Ifeanyichukwu Hilary</div></div>
-                  </div>
-                  <div className="mt-4 text-xs text-slate-500 leading-relaxed">
-                    We're working on our Paystack integration — these details will update soon. For confirmation, WhatsApp or call <a href="tel:+2348141880550" className="font-semibold cs-text-green">+234 814 188 0550</a>.
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
 
         </div>
       </section>
