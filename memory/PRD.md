@@ -142,7 +142,7 @@ Brand: Deep Navy #002147, Vibrant Green #28A745, Electric Blue #0056B3. Visuals 
 - ❗ Debug why parent@demo.school's children list, term progression chart, and report card buttons did not render. Verify `/api/parent/children` and seed data.
 
 **Bank-transfer payments (interim, no Paystack yet)**
-- ❗ Display configurable personal bank account (account name, number, bank) on the Pricing/Checkout page. Schools transfer NGN to that account, upload receipt, super admin approves → activates subscription. This flow already exists in code (Phase-1 ✅) — just needs the bank-details editor in Super Admin dashboard so user can plug in his personal account TODAY without Paystack/Flutterwave.
+- ✅ **DONE Feb 2026** — UBA / 2936722942 / Mervyndean Ifeanyichukwu Hilary displayed on Landing pricing section + inside School Admin "Upload bank receipt" dialog, with WhatsApp +2348141880550 confirmation note. Receipt upload → super-admin verify queue flow already wired.
 
 ### P0 — pre-existing (still valid)
 - Live email-out for Contact Us → thecornerstreams@gmail.com (Resend / SendGrid).

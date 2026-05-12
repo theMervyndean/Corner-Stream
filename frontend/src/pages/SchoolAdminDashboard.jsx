@@ -979,6 +979,17 @@ export default function SchoolAdminDashboard() {
         <DialogContent>
           <DialogHeader><DialogTitle>Upload bank transfer receipt</DialogTitle></DialogHeader>
           <div className="space-y-3">
+            <div className="rounded-xl border-2 border-[#28A745] bg-green-50 p-4" data-testid="bank-details-box">
+              <div className="text-xs font-semibold cs-text-green uppercase tracking-wider mb-2">Transfer NGN to</div>
+              <div className="grid grid-cols-1 gap-1 text-sm">
+                <div className="flex justify-between"><span className="text-slate-600">Account Number</span><span className="font-mono font-bold cs-text-navy">2936722942</span></div>
+                <div className="flex justify-between"><span className="text-slate-600">Bank</span><span className="font-semibold cs-text-navy">United Bank of Africa (UBA)</span></div>
+                <div className="flex justify-between"><span className="text-slate-600">Account Name</span><span className="font-semibold cs-text-navy text-right">Mervyndean Ifeanyichukwu Hilary</span></div>
+              </div>
+              <div className="mt-3 pt-3 border-t border-green-200 text-[11px] text-slate-600 leading-relaxed">
+                We're working on our Paystack integration — these details will update soon. For confirmation, WhatsApp or call <a href="tel:+2348141880550" className="font-semibold cs-text-green">+234 814 188 0550</a>.
+              </div>
+            </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label>Tier</Label>
