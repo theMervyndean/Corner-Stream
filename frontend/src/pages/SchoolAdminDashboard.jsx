@@ -882,11 +882,11 @@ export default function SchoolAdminDashboard() {
                 ))}
               </div>
             </div>
-            <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
               {Object.entries(PRICING).map(([k, t]) => {
-                const dur = k === "unified_enterprise" ? "full_session" : duration;
-                const price = t[dur];
+                const price = t[duration];
                 const featured = k === "unified_enterprise";
+                const dur = duration;
                 return (
                   <div key={k} className={`cs-card p-6 flex flex-col ${featured ? "tier-featured" : ""}`} data-testid={`subscribe-card-${k}`}>
                     <h3 className="font-display font-bold cs-text-navy text-lg">{t.name}</h3>
@@ -900,10 +900,10 @@ export default function SchoolAdminDashboard() {
                     <Button
                       disabled={!price}
                       onClick={() => { if (price) { setBankForm((f) => ({ ...f, tier: k, duration: dur, amount_ngn: price })); setBankDlg(true); } }}
-                      className="mt-5 cs-bg-green text-white rounded-full hover:opacity-90"
+                      className={`mt-5 rounded-full ${price ? "cs-bg-green text-white hover:opacity-90" : "bg-slate-200 text-slate-400 cursor-not-allowed hover:bg-slate-200"}`}
                       data-testid={`subscribe-btn-${k}`}
                     >
-                      Pay by bank transfer <ArrowRight size={16} className="ml-2" />
+                      {price ? <>Pay by bank transfer <ArrowRight size={16} className="ml-2" /></> : "Not available"}
                     </Button>
                   </div>
                 );
@@ -982,34 +982,55 @@ export default function SchoolAdminDashboard() {
 
       {/* Bank receipt dialog */}
       <Dialog open={bankDlg} onOpenChange={setBankDlg}>
-        <DialogContent>
+        <DialogContent className="max-w-md sm:max-w-lg w-[95vw] max-h-[92vh] overflow-y-auto">
           <DialogHeader><DialogTitle>Upload bank transfer receipt</DialogTitle></DialogHeader>
           <div className="space-y-3">
-            <div className="rounded-xl border-2 border-[#28A745] bg-green-50 p-4" data-testid="bank-details-box">
-              <div className="text-xs font-semibold cs-text-green uppercase tracking-wider mb-2">Transfer NGN to</div>
-              <div className="grid grid-cols-1 gap-1 text-sm">
-                <div className="flex justify-between"><span className="text-slate-600">Account Number</span><span className="font-mono font-bold cs-text-navy">2936722942</span></div>
-                <div className="flex justify-between"><span className="text-slate-600">Bank</span><span className="font-semibold cs-text-navy">United Bank of Africa (UBA)</span></div>
-                <div className="flex justify-between"><span className="text-slate-600">Account Name</span><span className="font-semibold cs-text-navy text-right">Mervyndean Ifeanyichukwu Hilary</span></div>
+            <div className="rounded-xl border-2 border-[#28A745] bg-green-50 p-3 sm:p-4" data-testid="bank-details-box">
+              <div className="text-[11px] sm:text-xs font-semibold cs-text-green uppercase tracking-wider mb-2">Transfer NGN to</div>
+              <div className="grid grid-cols-1 gap-1.5 text-xs sm:text-sm">
+                <div className="flex justify-between items-center gap-2"><span className="text-slate-600 shrink-0">Account No.</span><span className="font-mono font-bold cs-text-navy">2936722942</span></div>
+                <div className="flex justify-between items-center gap-2"><span className="text-slate-600 shrink-0">Bank</span><span className="font-semibold cs-text-navy text-right">United Bank of Africa (UBA)</span></div>
+                <div className="flex justify-between items-start gap-2"><span className="text-slate-600 shrink-0">Account Name</span><span className="font-semibold cs-text-navy text-right leading-tight">Mervyndean Ifeanyichukwu Hilary</span></div>
               </div>
-              <div className="mt-3 pt-3 border-t border-green-200 text-[12px] text-slate-700 leading-relaxed">
-                <span className="font-semibold cs-text-navy">Add the name of school and sender's name for validation.</span> We're working on our Paystack integration — these details will update soon. For confirmation, WhatsApp or call <a href="tel:+2348141880550" className="font-semibold cs-text-green">+234 814 188 0550</a>.
+              <div className="mt-3 pt-3 border-t border-green-200 text-[11px] sm:text-[12px] text-slate-700 leading-relaxed">
+                <span className="font-semibold cs-text-navy">Add the name of school and sender's name for validation.</span> We're working on our Paystack integration — these details will update soon. For confirmation, WhatsApp or call <a href="tel:+2348141880550" className="font-semibold cs-text-green whitespace-nowrap">+234 814 188 0550</a>.
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <Label>Tier</Label>
-                <Select value={bankForm.tier} onValueChange={(v) => setBankForm({ ...bankForm, tier: v })}>
-                  <SelectTrigger data-testid="bank-tier"><SelectValue /></SelectTrigger>
-                  <SelectContent>{Object.entries(PRICING).map(([k, v]) => <SelectItem key={k} value={k}>{v.name}</SelectItem>)}</SelectContent>
-                </Select>
+                <select
+                  value={bankForm.tier}
+                  onChange={(e) => {
+                    const t = e.target.value;
+                    const newDur = t === "unified_enterprise" ? "full_session" : bankForm.duration;
+                    const newPrice = PRICING[t]?.[newDur] || 0;
+                    setBankForm({ ...bankForm, tier: t, duration: newDur, amount_ngn: newPrice });
+                  }}
+                  className="mt-1 flex h-10 w-full items-center rounded-md border border-input bg-white px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-[#28A745]"
+                  data-testid="bank-tier"
+                >
+                  {Object.entries(PRICING).map(([k, v]) => <option key={k} value={k}>{v.name}</option>)}
+                </select>
               </div>
               <div>
                 <Label>Duration</Label>
-                <Select value={bankForm.duration} onValueChange={(v) => setBankForm({ ...bankForm, duration: v })}>
-                  <SelectTrigger data-testid="bank-dur"><SelectValue /></SelectTrigger>
-                  <SelectContent>{DURS.map((d) => <SelectItem key={d.k} value={d.k}>{d.l}</SelectItem>)}</SelectContent>
-                </Select>
+                <select
+                  value={bankForm.duration}
+                  onChange={(e) => {
+                    const d = e.target.value;
+                    const newPrice = PRICING[bankForm.tier]?.[d] || 0;
+                    setBankForm({ ...bankForm, duration: d, amount_ngn: newPrice });
+                  }}
+                  disabled={bankForm.tier === "unified_enterprise"}
+                  className="mt-1 flex h-10 w-full items-center rounded-md border border-input bg-white px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-[#28A745] disabled:bg-slate-100 disabled:text-slate-500"
+                  data-testid="bank-dur"
+                >
+                  {DURS.map((d) => {
+                    const allowed = PRICING[bankForm.tier]?.[d.k] !== undefined;
+                    return <option key={d.k} value={d.k} disabled={!allowed}>{d.l}{allowed ? "" : " — not available"}</option>;
+                  })}
+                </select>
               </div>
             </div>
             <div><Label>Amount paid (₦)</Label><Input type="number" value={bankForm.amount_ngn} onChange={(e) => setBankForm({ ...bankForm, amount_ngn: parseFloat(e.target.value || "0") })} data-testid="bank-amount" /></div>
