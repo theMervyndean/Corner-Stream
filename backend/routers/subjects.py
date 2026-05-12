@@ -11,6 +11,7 @@ router = APIRouter(prefix="/subjects", tags=["subjects"])
 class SubjectsIn(BaseModel):
     class_name: str
     subjects: List[str]
+    teacher_assignments: Optional[dict] = None  # {subject_name: teacher_user_id}
 
 
 @router.get("")
@@ -32,10 +33,20 @@ async def upsert_subjects(payload: SubjectsIn, user: dict = Depends(require_role
     cleaned = [s.strip() for s in payload.subjects if s and s.strip()]
     school_id = user["school_id"]
     existing = await db.class_subjects.find_one({"school_id": school_id, "class_name": payload.class_name})
+    # Validate teacher_assignments: only keep subjects that exist + verify teachers belong to school
+    teacher_assignments = {}
+    if payload.teacher_assignments:
+        valid_teacher_ids = set()
+        async for t in db.users.find({"school_id": school_id, "role": "teacher"}, {"id": 1, "_id": 0}):
+            valid_teacher_ids.add(t["id"])
+        for subj, tid in payload.teacher_assignments.items():
+            if subj in cleaned and tid in valid_teacher_ids:
+                teacher_assignments[subj] = tid
     doc = {
         "school_id": school_id,
         "class_name": payload.class_name,
         "subjects": cleaned,
+        "teacher_assignments": teacher_assignments,
         "updated_at": now_iso(),
     }
     if existing:

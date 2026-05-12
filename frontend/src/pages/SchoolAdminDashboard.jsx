@@ -17,10 +17,12 @@ import {
   AlertTriangle, CreditCard, KeyRound, Image as ImageIcon, BookOpen, Trash2,
   CheckCircle2, Circle, Download, GraduationCap, FileSpreadsheet, Activity,
   UserPlus, ClipboardList, History, Eye, RotateCcw, UserCog, UserMinus,
+  Search, Filter, X as XIcon, BadgeCheck,
 } from "lucide-react";
 import { ChartCard, BarSimple, DonutChart, GrowthArea } from "@/components/Charts.jsx";
 import BulkUploadDialog from "@/components/BulkUploadDialog.jsx";
 import CredentialsModal from "@/components/CredentialsModal.jsx";
+import StudentProfileDialog from "@/components/StudentProfileDialog.jsx";
 
 const PRICING = {
   cbt_essentials: { name: "CBT Essentials", "1_term": 40000, "2_terms": 70000, "full_session": 110000 },
@@ -72,6 +74,17 @@ export default function SchoolAdminDashboard() {
   const [bulkRole, setBulkRole] = useState(null);
   // Credentials modal — used after single Reveal / Reset
   const [credModal, setCredModal] = useState(null); // {title, created, skipped, role, note}
+  // Student profile dialog
+  const [profileStudent, setProfileStudent] = useState(null);
+  // Sprint-1: Students search & filters
+  const [stuSearch, setStuSearch] = useState("");
+  const [stuClassFilter, setStuClassFilter] = useState("all");
+  const [stuFeeFilter, setStuFeeFilter] = useState("all"); // all | paid | unpaid
+  const [stuBenchmark, setStuBenchmark] = useState(false); // when true: only students with avg ≥ school benchmark
+  // Sprint-1: Users tab sub-selection
+  const [usersSubtab, setUsersSubtab] = useState("teachers"); // teachers | students | parents
+  // Sprint-1: passport upload preview
+  const [passportPreview, setPassportPreview] = useState(null);
 
   // Classes management
   const [newClassName, setNewClassName] = useState("");
@@ -332,21 +345,64 @@ export default function SchoolAdminDashboard() {
     } catch (e) { toast.error(formatApiError(e.response?.data?.detail) || e.message); }
   };
 
-  // Passport
+  // Passport — Sprint 1: 500 KB limit + preview before save
+  const MAX_PASSPORT_BYTES = 500 * 1024;
   const onPassportFile = (st, e) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      toast.error("Please choose an image file");
+      e.target.value = "";
+      return;
+    }
+    if (file.size > MAX_PASSPORT_BYTES) {
+      toast.error(`Image too large — max 500 KB. Yours is ${(file.size / 1024).toFixed(0)} KB.`);
+      e.target.value = "";
+      return;
+    }
     const reader = new FileReader();
-    reader.onload = async () => {
-      try {
-        await api.put(`/students/${st.id}/passport`, { passport_url: reader.result });
-        toast.success("Passport uploaded");
-        setPassportDlg(null);
-        refresh();
-      } catch (err) { toast.error(formatApiError(err.response?.data?.detail) || err.message); }
+    reader.onload = () => {
+      setPassportPreview(reader.result);
+      toast.success(`Preview ready (${(file.size / 1024).toFixed(0)} KB) — click Save to confirm`);
     };
     reader.readAsDataURL(file);
   };
+  const savePassport = async () => {
+    if (!passportDlg || !passportPreview) return;
+    try {
+      await api.put(`/students/${passportDlg.id}/passport`, { passport_url: passportPreview });
+      toast.success(`Passport saved for ${passportDlg.name}`);
+      setPassportDlg(null);
+      setPassportPreview(null);
+      refresh();
+    } catch (err) { toast.error(formatApiError(err.response?.data?.detail) || err.message); }
+  };
+
+  // Sprint-1: Students filter pipeline
+  const filteredStudents = useMemo(() => {
+    let arr = students;
+    if (stuSearch.trim()) {
+      const q = stuSearch.trim().toLowerCase();
+      arr = arr.filter((s) =>
+        (s.name || "").toLowerCase().includes(q) ||
+        (s.parent_name || "").toLowerCase().includes(q) ||
+        (s.parent_email || "").toLowerCase().includes(q) ||
+        (s.class_name || "").toLowerCase().includes(q),
+      );
+    }
+    if (stuClassFilter !== "all") arr = arr.filter((s) => s.class_name === stuClassFilter);
+    if (stuFeeFilter === "paid") arr = arr.filter((s) => (s.balance_due || 0) <= 0);
+    if (stuFeeFilter === "unpaid") arr = arr.filter((s) => (s.balance_due || 0) > 0);
+    // Above benchmark (uses school.benchmark, default 50)
+    if (stuBenchmark) {
+      const bench = Number(school?.benchmark || 50);
+      arr = arr.filter((s) => {
+        const avg = Number(s.term_average || s.cumulative_average || 0);
+        return avg >= bench;
+      });
+    }
+    return arr;
+  }, [students, stuSearch, stuClassFilter, stuFeeFilter, stuBenchmark, school]);
 
   const debtCount = useMemo(() => students.filter((s) => (s.balance_due || 0) > 0).length, [students]);
   const totalDebt = useMemo(() => students.reduce((a, s) => a + (s.balance_due || 0), 0), [students]);
@@ -620,8 +676,8 @@ export default function SchoolAdminDashboard() {
           <TabsContent value="users" className="mt-6">
             <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
               <div>
-                <h3 className="font-display font-semibold cs-text-navy text-lg">Teachers, parents & students</h3>
-                <p className="text-xs text-slate-500">Create logins, reveal/reset passwords, and promote trusted staff to admin.</p>
+                <h3 className="font-display font-semibold cs-text-navy text-lg">Users & logins</h3>
+                <p className="text-xs text-slate-500">Teachers, students and parents — each in their own table.</p>
               </div>
               <div className="flex flex-wrap gap-2">
                 <Button variant="outline" size="sm" onClick={() => setBulkRole("teacher")} className="btn-anim" data-testid="bulk-teachers-btn">
@@ -636,6 +692,28 @@ export default function SchoolAdminDashboard() {
                 <Button onClick={() => { setNewUser({ name: "", email: "", password: "", role: "teacher", assigned_class: "" }); setUserDlg(true); }} className="cs-bg-green text-white hover:opacity-90 rounded-full btn-anim" data-testid="add-user-btn"><Plus size={14} className="mr-1" /> Add user</Button>
               </div>
             </div>
+
+            {/* Sub-tab pills */}
+            <div className="inline-flex gap-1 bg-slate-100 rounded-full p-1 mb-4">
+              {[
+                { key: "teachers", label: "Teachers", role: "teacher" },
+                { key: "students", label: "Students", role: "student" },
+                { key: "parents", label: "Parents", role: "parent" },
+              ].map((t) => {
+                const count = usersList.filter((u) => u.role === t.role && u.id !== user.id).length;
+                return (
+                  <button
+                    key={t.key}
+                    onClick={() => setUsersSubtab(t.key)}
+                    data-testid={`users-subtab-${t.key}`}
+                    className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors cs-noflip ${usersSubtab === t.key ? "cs-bg-navy text-white shadow" : "text-slate-600 hover:bg-white"}`}
+                  >
+                    {t.label} <span className={`ml-1 text-[10px] px-1.5 py-0.5 rounded-full ${usersSubtab === t.key ? "bg-white/20" : "bg-slate-200"}`}>{count}</span>
+                  </button>
+                );
+              })}
+            </div>
+
             <div className="cs-card overflow-hidden">
               <div className="overflow-x-auto">
                 <Table>
@@ -643,64 +721,66 @@ export default function SchoolAdminDashboard() {
                     <TableRow className="cs-bg-navy hover:cs-bg-navy">
                       <TableHead className="text-white">Name</TableHead>
                       <TableHead className="text-white">Login</TableHead>
-                      <TableHead className="text-white">Role</TableHead>
                       <TableHead className="text-white">Password</TableHead>
-                      <TableHead className="text-white">Class</TableHead>
+                      {usersSubtab === "teachers" && <TableHead className="text-white">Classes</TableHead>}
+                      {usersSubtab === "students" && <TableHead className="text-white">Class</TableHead>}
+                      {usersSubtab === "parents" && <TableHead className="text-white">Children</TableHead>}
                       <TableHead className="text-white text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {usersList.filter((u) => u.role !== "super_admin" && u.id !== user.id).map((u, i) => {
+                    {usersList.filter((u) => {
+                      if (u.id === user.id || u.role === "super_admin") return false;
+                      if (usersSubtab === "teachers") return u.role === "teacher";
+                      if (usersSubtab === "students") return u.role === "student";
+                      if (usersSubtab === "parents") return u.role === "parent";
+                      return false;
+                    }).map((u, i) => {
                       const isAdminPower = u.role === "school_admin" || u.is_admin;
-                      const isPrimaryAdmin = u.role === "school_admin";
                       const isPromoted = u.is_admin && u.role !== "school_admin";
                       const pwChanged = u.password_changed_by_user;
+                      const linkedStudents = u.role === "parent"
+                        ? students.filter((s) => (s.parent_email || "").toLowerCase() === (u.email || "").toLowerCase())
+                        : (u.role === "student" ? students.filter((s) => s.id === u.student_id) : []);
                       return (
                         <TableRow key={u.id} className={i % 2 ? "bg-slate-50" : ""} data-testid={`user-row-${u.id}`}>
                           <TableCell className="font-medium">
                             <div className="flex flex-col">
                               <span>{u.name}</span>
-                              {isPromoted && <span className="text-[10px] text-emerald-700">+ Admin powers</span>}
+                              {isPromoted && <span className="text-[10px] text-emerald-700 flex items-center gap-1"><ShieldCheck size={9} /> Admin powers</span>}
                             </div>
                           </TableCell>
                           <TableCell className="text-xs">{u.email}</TableCell>
-                          <TableCell>
-                            <Badge className={
-                              u.role === "teacher" ? "cs-bg-blue text-white" :
-                              u.role === "parent" ? "bg-amber-500 text-white" :
-                              u.role === "school_admin" ? "cs-bg-navy text-white" : "cs-bg-green text-white"
-                            }>{u.role.replace("_", " ")}</Badge>
-                          </TableCell>
                           <TableCell>
                             {pwChanged
                               ? <Badge variant="outline" className="text-slate-600 border-slate-300">User-set</Badge>
                               : <Badge variant="outline" className="text-emerald-700 border-emerald-300">Auto</Badge>}
                           </TableCell>
-                          <TableCell className="text-xs">{u.assigned_class || (u.assigned_classes || []).join(", ") || "—"}</TableCell>
+                          <TableCell className="text-xs">
+                            {usersSubtab === "teachers" && (u.assigned_class || (u.assigned_classes || []).join(", ") || "—")}
+                            {usersSubtab === "students" && (linkedStudents[0]?.class_name || "—")}
+                            {usersSubtab === "parents" && (linkedStudents.length ? linkedStudents.map((s) => s.name).slice(0, 2).join(", ") + (linkedStudents.length > 2 ? ` +${linkedStudents.length - 2}` : "") : "—")}
+                          </TableCell>
                           <TableCell className="text-right">
                             <div className="inline-flex gap-1">
                               {!pwChanged && (
-                                <Button size="sm" variant="ghost" onClick={() => revealPwd(u)} title="Reveal password" data-testid={`reveal-${u.id}`}><Eye size={14} /></Button>
+                                <Button size="sm" variant="ghost" onClick={() => revealPwd(u)} title="Reveal password" data-testid={`reveal-${u.id}`} className="cs-noflip"><Eye size={14} /></Button>
                               )}
-                              <Button size="sm" variant="ghost" onClick={() => resetPwd(u)} title="Reset password (generate new)" data-testid={`reset-${u.id}`}><RotateCcw size={14} /></Button>
-                              {isPrimaryAdmin ? (
-                                <Badge variant="outline" className="ml-1 text-[10px]">Primary admin</Badge>
-                              ) : isPromoted ? (
-                                <Button size="sm" variant="ghost" onClick={() => demoteUser(u)} title="Revoke admin powers" data-testid={`demote-${u.id}`}><UserMinus size={14} className="text-red-500" /></Button>
+                              <Button size="sm" variant="ghost" onClick={() => resetPwd(u)} title="Reset password" data-testid={`reset-${u.id}`} className="cs-noflip"><RotateCcw size={14} /></Button>
+                              {isPromoted ? (
+                                <Button size="sm" variant="ghost" onClick={() => demoteUser(u)} title="Revoke admin" data-testid={`demote-${u.id}`} className="cs-noflip"><UserMinus size={14} className="text-red-500" /></Button>
                               ) : (
                                 (u.role === "teacher" || u.role === "parent") &&
-                                <Button size="sm" variant="ghost" onClick={() => promoteUser(u)} title="Grant admin powers" data-testid={`promote-${u.id}`}><UserCog size={14} className="cs-text-blue" /></Button>
+                                <Button size="sm" variant="ghost" onClick={() => promoteUser(u)} title="Grant admin" data-testid={`promote-${u.id}`} className="cs-noflip"><UserCog size={14} className="cs-text-blue" /></Button>
                               )}
-                              {!isPrimaryAdmin && (
-                                <Button size="sm" variant="ghost" onClick={() => removeUser(u.id)} title="Delete user" data-testid={`user-del-${u.id}`}><Trash2 size={14} className="text-red-500" /></Button>
-                              )}
+                              <Button size="sm" variant="ghost" onClick={() => removeUser(u.id)} title="Delete" data-testid={`user-del-${u.id}`} className="cs-noflip"><Trash2 size={14} className="text-red-500" /></Button>
                             </div>
                           </TableCell>
                         </TableRow>
                       );
                     })}
-                    {!usersList.filter((u) => u.role !== "super_admin" && u.id !== user.id).length && (
-                      <TableRow><TableCell colSpan={6} className="text-center text-slate-500 py-8">No teachers, parents or students yet. Click <strong>Add user</strong> or <strong>Bulk teachers/parents/students</strong>.</TableCell></TableRow>
+                    {!usersList.filter((u) => u.id !== user.id && u.role !== "super_admin" && (usersSubtab === "teachers" ? u.role === "teacher" : usersSubtab === "students" ? u.role === "student" : u.role === "parent")).length && (
+                      <TableRow><TableCell colSpan={5} className="text-center text-slate-500 py-8">No {usersSubtab} yet. Use <strong>Bulk {usersSubtab}</strong> or <strong>Add user</strong>.</TableCell></TableRow>
                     )}
                   </TableBody>
                 </Table>
