@@ -1,115 +1,471 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=IBM+Plex+Sans:wght@400;500;600;700&family=Caveat:wght@500;700&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+/* Mobile responsiveness guardrails */
+html, body, #root {
+  overflow-x: hidden;
+  max-width: 100vw;
+}
+img, video { max-width: 100%; height: auto; }
+@media (max-width: 640px) {
+  .cs-card { padding: 1.25rem !important; }
+  h1 { word-break: break-word; }
+}
+
+
+:root {
+  --cs-navy: #002147;
+  --cs-green: #28A745;
+  --cs-blue: #0056B3;
+  --cs-bg: #F8FAFC;
+  --cs-surface: #FFFFFF;
+  --cs-text: #002147;
+  --cs-text-muted: #475569;
+  --cs-border: #E2E8F0;
+}
+
+@layer base {
+  :root {
+    --background: 210 40% 98%;
+    --foreground: 213 100% 14%;
+    --card: 0 0% 100%;
+    --card-foreground: 213 100% 14%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 213 100% 14%;
+    --primary: 213 100% 14%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 210 40% 96%;
+    --secondary-foreground: 213 100% 14%;
+    --muted: 210 40% 96%;
+    --muted-foreground: 215 16% 47%;
+    --accent: 210 40% 96%;
+    --accent-foreground: 213 100% 14%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 214 32% 91%;
+    --input: 214 32% 91%;
+    --ring: 213 100% 35%;
+    --radius: 0.5rem;
+  }
+}
+
+* {
+  border-color: hsl(var(--border));
+}
+
+html, body, #root {
+  height: 100%;
+}
+
 body {
-    margin: 0;
-    font-family:
-        -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen",
-        "Ubuntu", "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue",
-        sans-serif;
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
+  margin: 0;
+  font-family: 'IBM Plex Sans', system-ui, sans-serif;
+  background: var(--cs-bg);
+  color: var(--cs-text);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-code {
-    font-family:
-        source-code-pro, Menlo, Monaco, Consolas, "Courier New", monospace;
+h1, h2, h3, h4, h5, h6, .font-display {
+  font-family: 'Outfit', sans-serif;
+  letter-spacing: -0.01em;
 }
 
-@layer base {
-    :root {
-        --background: 0 0% 100%;
-        --foreground: 0 0% 3.9%;
-        --card: 0 0% 100%;
-        --card-foreground: 0 0% 3.9%;
-        --popover: 0 0% 100%;
-        --popover-foreground: 0 0% 3.9%;
-        --primary: 0 0% 9%;
-        --primary-foreground: 0 0% 98%;
-        --secondary: 0 0% 96.1%;
-        --secondary-foreground: 0 0% 9%;
-        --muted: 0 0% 96.1%;
-        --muted-foreground: 0 0% 45.1%;
-        --accent: 0 0% 96.1%;
-        --accent-foreground: 0 0% 9%;
-        --destructive: 0 84.2% 60.2%;
-        --destructive-foreground: 0 0% 98%;
-        --border: 0 0% 89.8%;
-        --input: 0 0% 89.8%;
-        --ring: 0 0% 3.9%;
-        --chart-1: 12 76% 61%;
-        --chart-2: 173 58% 39%;
-        --chart-3: 197 37% 24%;
-        --chart-4: 43 74% 66%;
-        --chart-5: 27 87% 67%;
-        --radius: 0.5rem;
-    }
-    .dark {
-        --background: 0 0% 3.9%;
-        --foreground: 0 0% 98%;
-        --card: 0 0% 3.9%;
-        --card-foreground: 0 0% 98%;
-        --popover: 0 0% 3.9%;
-        --popover-foreground: 0 0% 98%;
-        --primary: 0 0% 98%;
-        --primary-foreground: 0 0% 9%;
-        --secondary: 0 0% 14.9%;
-        --secondary-foreground: 0 0% 98%;
-        --muted: 0 0% 14.9%;
-        --muted-foreground: 0 0% 63.9%;
-        --accent: 0 0% 14.9%;
-        --accent-foreground: 0 0% 98%;
-        --destructive: 0 62.8% 30.6%;
-        --destructive-foreground: 0 0% 98%;
-        --border: 0 0% 14.9%;
-        --input: 0 0% 14.9%;
-        --ring: 0 0% 83.1%;
-        --chart-1: 220 70% 50%;
-        --chart-2: 160 60% 45%;
-        --chart-3: 30 80% 55%;
-        --chart-4: 280 65% 60%;
-        --chart-5: 340 75% 55%;
-    }
+.font-script { font-family: 'Caveat', cursive; }
+
+.cs-bg-navy { background-color: var(--cs-navy); }
+.cs-bg-green { background-color: var(--cs-green); }
+.cs-bg-blue { background-color: var(--cs-blue); }
+.cs-text-navy { color: var(--cs-navy); }
+.cs-text-green { color: var(--cs-green); }
+.cs-text-blue { color: var(--cs-blue); }
+.cs-border-navy { border-color: var(--cs-navy); }
+
+/* Eyebrow / accent labels */
+.eyebrow {
+  font-size: 0.7rem;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: var(--cs-blue);
 }
 
-@layer base {
-    * {
-        @apply border-border;
-    }
-    body {
-        @apply bg-background text-foreground;
-    }
+/* Pill-style toggle */
+.pill-toggle {
+  display: inline-flex;
+  background: white;
+  padding: 0.35rem;
+  border-radius: 999px;
+  border: 1px solid var(--cs-border);
+  box-shadow: 0 1px 2px rgba(0, 33, 71, 0.04);
+}
+.pill-toggle button {
+  border-radius: 999px;
+  padding: 0.55rem 1.2rem;
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--cs-text-muted);
+  transition: background-color 200ms, color 200ms;
+}
+.pill-toggle button:hover:not(.active) {
+  background: rgba(40, 167, 69, 0.08);
+  color: var(--cs-navy);
+}
+.pill-toggle button.active {
+  background: var(--cs-navy);
+  color: white;
+}
+.pill-toggle button.active:hover {
+  background: var(--cs-green);
+  color: white;
 }
 
-@layer base {
-    [data-debug-wrapper="true"] {
-        display: contents !important;
-    }
-
-    [data-debug-wrapper="true"] > * {
-        margin-left: inherit;
-        margin-right: inherit;
-        margin-top: inherit;
-        margin-bottom: inherit;
-        padding-left: inherit;
-        padding-right: inherit;
-        padding-top: inherit;
-        padding-bottom: inherit;
-        column-gap: inherit;
-        row-gap: inherit;
-        gap: inherit;
-        border-left-width: inherit;
-        border-right-width: inherit;
-        border-top-width: inherit;
-        border-bottom-width: inherit;
-        border-left-style: inherit;
-        border-right-style: inherit;
-        border-top-style: inherit;
-        border-bottom-style: inherit;
-        border-left-color: inherit;
-        border-right-color: inherit;
-        border-top-color: inherit;
-        border-bottom-color: inherit;
-    }
+/* Cards */
+.cs-card {
+  background: white;
+  border: 1px solid var(--cs-border);
+  border-radius: 14px;
+  transition: box-shadow 200ms, transform 200ms;
 }
+.cs-card:hover {
+  box-shadow: 0 8px 24px rgba(0, 33, 71, 0.08);
+}
+
+/* Tier highlight */
+.tier-featured {
+  border: 2px solid var(--cs-green);
+  position: relative;
+}
+.tier-featured::before {
+  content: 'BEST VALUE';
+  position: absolute;
+  top: -12px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--cs-green);
+  color: white;
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  padding: 0.25rem 0.7rem;
+  border-radius: 999px;
+}
+
+/* Star rating */
+.star-on { color: var(--cs-blue); }
+.star-off { color: #CBD5E1; }
+
+/* Print styles for report card */
+@media print {
+  .no-print { display: none !important; }
+  body { background: white; }
+}
+
+/* Animation utilities */
+.fade-up {
+  animation: fadeUp 600ms ease both;
+}
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Scroll-reveal */
+[data-reveal] {
+  opacity: 0;
+  transform: translateY(28px);
+  transition: opacity 800ms cubic-bezier(.21,.6,.35,1), transform 800ms cubic-bezier(.21,.6,.35,1);
+  will-change: opacity, transform;
+}
+[data-reveal].revealed {
+  opacity: 1;
+  transform: translateY(0);
+}
+[data-reveal][data-reveal-delay="1"].revealed { transition-delay: 80ms; }
+[data-reveal][data-reveal-delay="2"].revealed { transition-delay: 160ms; }
+[data-reveal][data-reveal-delay="3"].revealed { transition-delay: 240ms; }
+[data-reveal][data-reveal-delay="4"].revealed { transition-delay: 320ms; }
+[data-reveal][data-reveal-delay="5"].revealed { transition-delay: 400ms; }
+
+/* Button micro-interactions — see consolidated definition below */
+
+/* Subtle grid background for hero */
+.grid-bg {
+  background-image:
+    linear-gradient(rgba(0, 33, 71, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 33, 71, 0.05) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+/* ============================================================
+   GLOBAL ANIMATIONS PASS — applied via CSS selectors so every
+   page, button, dialog, nav and table responds without code edits.
+   Easing: cubic-bezier(.21, .6, .35, 1) — the "Apple-style" ease-out.
+   Respects prefers-reduced-motion at the bottom.
+   ============================================================ */
+
+:root {
+  --cs-ease: cubic-bezier(.21, .6, .35, 1);
+}
+
+/* --- Page transitions: smooth fade-up on route change --- */
+.page-anim {
+  animation: pageEnter 520ms var(--cs-ease) both;
+}
+@keyframes pageEnter {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* --- Baseline button feedback (every button, not just .btn-anim) --- */
+button {
+  transition:
+    transform 200ms var(--cs-ease),
+    box-shadow 250ms ease,
+    background-color 200ms ease,
+    color 200ms ease,
+    border-color 200ms ease,
+    opacity 200ms ease;
+}
+button:not(:disabled):hover {
+  transform: translateY(-1px);
+}
+button:not(:disabled):active {
+  transform: translateY(0) scale(0.97);
+}
+button:disabled {
+  cursor: not-allowed;
+}
+
+/* Opt-out class for icon buttons that must stay perfectly positioned
+ * (e.g., password-eye toggle, close icons, table-row action icons). */
+button.cs-noflip,
+button.cs-noflip:hover,
+button.cs-noflip:active {
+  transform: none !important;
+}
+
+/* Stronger .btn-anim override for primary CTAs */
+.btn-anim {
+  transition:
+    transform 220ms var(--cs-ease),
+    box-shadow 280ms ease,
+    opacity 200ms ease;
+  will-change: transform;
+}
+.btn-anim:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 24px rgba(0, 33, 71, 0.16);
+}
+.btn-anim:active:not(:disabled) {
+  transform: translateY(0) scale(0.97);
+  box-shadow: 0 4px 8px rgba(0, 33, 71, 0.10);
+}
+
+/* --- Card hover lift everywhere --- */
+.cs-card {
+  transition:
+    transform 280ms var(--cs-ease),
+    box-shadow 280ms ease,
+    border-color 200ms ease;
+  will-change: transform;
+}
+.cs-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 18px 36px -14px rgba(0, 33, 71, 0.2);
+}
+
+/* --- Anchors: hover color + nav underline --- */
+a {
+  transition: color 180ms ease, opacity 180ms ease;
+}
+
+header nav a {
+  position: relative;
+  padding-bottom: 2px;
+}
+header nav a::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: -2px;
+  height: 2px;
+  width: 0;
+  background: var(--cs-green);
+  border-radius: 2px;
+  transition: width 280ms var(--cs-ease);
+}
+header nav a:hover::after {
+  width: 100%;
+}
+
+/* --- Tab content fade-up when switched --- */
+[role="tabpanel"][data-state="active"] {
+  animation: tabFade 320ms var(--cs-ease) both;
+}
+@keyframes tabFade {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Tabs trigger underline gleam */
+[role="tab"] {
+  transition: color 180ms ease, background-color 180ms ease;
+}
+
+/* --- Dialog / modal entry --- */
+[role="dialog"][data-state="open"] {
+  animation: dialogIn 280ms var(--cs-ease) both;
+}
+[role="dialog"][data-state="closed"] {
+  animation: dialogOut 200ms ease both;
+}
+@keyframes dialogIn {
+  from { opacity: 0; transform: translate(-50%, calc(-50% - 8px)) scale(0.96); }
+  to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+@keyframes dialogOut {
+  from { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  to { opacity: 0; transform: translate(-50%, calc(-50% - 4px)) scale(0.98); }
+}
+
+/* Dropdowns / popovers fade in */
+[data-radix-popper-content-wrapper] {
+  animation: popoverIn 220ms var(--cs-ease) both;
+}
+@keyframes popoverIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* --- Table row staggered fade-in (subtle, only on initial render) --- */
+tbody tr {
+  animation: rowFade 380ms var(--cs-ease) both;
+}
+tbody tr:nth-child(1) { animation-delay: 0ms; }
+tbody tr:nth-child(2) { animation-delay: 35ms; }
+tbody tr:nth-child(3) { animation-delay: 70ms; }
+tbody tr:nth-child(4) { animation-delay: 105ms; }
+tbody tr:nth-child(5) { animation-delay: 140ms; }
+tbody tr:nth-child(6) { animation-delay: 175ms; }
+tbody tr:nth-child(7) { animation-delay: 210ms; }
+tbody tr:nth-child(8) { animation-delay: 245ms; }
+tbody tr:nth-child(9) { animation-delay: 280ms; }
+tbody tr:nth-child(10) { animation-delay: 315ms; }
+tbody tr:nth-child(n+11) { animation-delay: 350ms; }
+@keyframes rowFade {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+tbody tr {
+  transition: background-color 200ms ease;
+}
+
+/* --- Form inputs: focus lift + smooth ring --- */
+input, textarea, select {
+  transition:
+    border-color 200ms ease,
+    box-shadow 220ms var(--cs-ease),
+    background-color 200ms ease;
+}
+input:focus, textarea:focus, select:focus,
+input:focus-visible, textarea:focus-visible, select:focus-visible {
+  box-shadow: 0 0 0 3px rgba(0, 86, 179, 0.18);
+}
+
+/* Checkbox + radio scale on check */
+input[type="checkbox"], input[type="radio"] {
+  transition: transform 200ms var(--cs-ease);
+}
+input[type="checkbox"]:checked, input[type="radio"]:checked {
+  transform: scale(1.08);
+}
+
+/* --- Badges / icons subtle motion --- */
+.cs-pulse {
+  animation: csPulse 2.4s ease-in-out infinite;
+}
+@keyframes csPulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.75; transform: scale(1.04); }
+}
+
+/* Soft hover float for icon buttons */
+.icon-float {
+  transition: transform 220ms var(--cs-ease);
+}
+.icon-float:hover { transform: translateY(-2px); }
+
+/* --- Stat tiles / KPI cards hover lift --- */
+[class*="stat-tile"], .kpi-tile {
+  transition: transform 250ms var(--cs-ease), box-shadow 250ms ease;
+}
+[class*="stat-tile"]:hover, .kpi-tile:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 14px 28px -12px rgba(0, 33, 71, 0.18);
+}
+
+/* --- Toast (sonner) — already animated, but ensure smooth --- */
+[data-sonner-toast] {
+  transition: transform 280ms var(--cs-ease), opacity 280ms ease;
+}
+
+/* --- Image hover for landing samples --- */
+img.cs-img-hover, .cs-img-hover img {
+  transition: transform 360ms var(--cs-ease), filter 280ms ease;
+}
+img.cs-img-hover:hover, .cs-img-hover:hover img {
+  transform: scale(1.03);
+  filter: brightness(1.04);
+}
+
+/* --- Loading spinner uses tailwind animate-spin, but let's keep
+   skeleton shimmer available --- */
+.cs-skeleton {
+  background: linear-gradient(90deg, #E2E8F0 0%, #F1F5F9 50%, #E2E8F0 100%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+  border-radius: 8px;
+}
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* --- Smooth scroll for anchor links --- */
+html { scroll-behavior: smooth; }
+
+/* --- Tab triggers: ripple-like background fade --- */
+[role="tab"][data-state="active"] {
+  animation: tabActive 280ms var(--cs-ease) both;
+}
+@keyframes tabActive {
+  from { transform: scale(0.97); opacity: 0.7; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+/* --- Accordion / details smooth open --- */
+details[open] > *:not(summary) {
+  animation: detailsOpen 320ms var(--cs-ease) both;
+}
+@keyframes detailsOpen {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+details summary {
+  transition: color 200ms ease;
+}
+
+/* --- Accessibility: respect reduced motion --- */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
