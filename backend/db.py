@@ -140,6 +140,9 @@ async def seed_demo_data():
             "phone": "+2348012345678",
             "kill_switch": False,
             "verification_status": "active",
+            "brand_color": "#002147",
+            "logo_url": "",
+            "whatsapp_phone": "+2348012345678",
             "subscription_tier": "unified_enterprise",
             "subscription_duration": "full_session",
             "subscription_expires_at": (datetime.now(timezone.utc) + timedelta(days=270)).isoformat(),
@@ -160,6 +163,9 @@ async def seed_demo_data():
 
     # Backfill verification_status="active" for ALL pre-existing schools (so old seed isn't broken)
     await db.schools.update_many({"verification_status": {"$exists": False}}, {"$set": {"verification_status": "active"}})
+    # Backfill default brand_color on schools that don't have one (used by report card)
+    await db.schools.update_many({"brand_color": {"$exists": False}}, {"$set": {"brand_color": "#002147"}})
+    await db.schools.update_many({"brand_color": None}, {"$set": {"brand_color": "#002147"}})
 
     # School admin
     if not await db.users.find_one({"email": "admin@demo.school"}):

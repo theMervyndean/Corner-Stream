@@ -1,195 +1,53 @@
 # Corner Streams — Product Requirements Document
 
 ## Original problem statement
-Corner Streams is a SaaS for Nigerian schools — "Taking away the paper trap." Cloud DB for Student Bio, Academic Engine (CA + Exam, 100-pt), Financial Ledger (Stripe + bank transfers, balances, Debt Lock), Super Admin "God Mode" with kill-switch and password override, dynamic pricing UI with 1/2/3 Term toggle, bulk Excel onboarding, Digital Reports with passport, 5-star skills, principal signature & QR verification, contact-us routing to thecornerstreams@gmail.com, PWA / offline-first, plus CBT exams and student logins (Phase-2).
+Corner Streams is a SaaS for Nigerian schools — "Taking away the paper trap." Cloud DB for Student Bio, Academic Engine (CA + Exam, 100-pt), Financial Ledger (Stripe + bank transfers, balances, Debt Lock), Super Admin "God Mode" with kill-switch and password override, dynamic pricing UI, bulk Excel onboarding, Digital Reports with passport, 5-star skills, principal signature & QR verification, PWA / offline-first, plus CBT exams and student logins.
 
-Brand: Deep Navy #002147, Vibrant Green #28A745, Electric Blue #0056B3. Visuals must depict Nigerian/African students/teachers/parents.
+Brand: Deep Navy #002147, Vibrant Green #28A745, Electric Blue #0056B3.
 
-## User personas
-- **Super Admin** — Corner Streams operator with global control (kill-switch, password override, leads, receipt verification).
-- **School Admin** — principal/owner who registers a school, onboards students, pays for tier, monitors balances, configures subjects per class, provisions student logins.
-- **Teacher** — enters CA + Exam scores and 5-star skill ratings per term/year; creates and publishes CBT MCQ exams.
-- **Parent** — views child's digital report card and fee balance; locked out by Debt Lock when balance > 0.
-- **Student (Phase-2)** — logs in with admin-provisioned credentials, sees class subjects, takes timed CBT exams, views own term result.
+## Latest session (Feb 2026 — migration + P0 #1, #10, #11)
+Project codebase was migrated from the `corner_streams` branch of `github.com/theMervyndean/Corner-Stream` into a new Emergent workspace (previous URL was `school-admin-hub-62...`, this workspace is `branding-hub-47...`). All routers, pages, PRD, design_guidelines, demo data and tests restored.
 
-## Core requirements (static)
-- 5 roles with JWT custom auth, all routes /api prefixed, MongoDB string IDs (no ObjectId in responses).
-- Pricing tiers (NGN): CBT Essentials 40k/70k/110k · Digital Reports 50k/90k/140k · Financial Ledger 40k/70k/110k · Unified Enterprise 200k (Full Session only).
-- Stripe checkout (test, sk_test_emergent), NGN→USD at fixed 1500.
-- Bank-transfer receipt upload + super-admin verify queue.
-- Digital report card: passport, CA(40)+Exam(60)→Total/Grade, skill ratings, principal signature (script font), QR code.
-- Debt Lock: parent + student-only; blocks Result Checker if balance_due > 0.
-- Kill-switch: blocks school-side login (school_admin/teacher/parent/student) but allows super_admin.
-- CBT MCQ exams: 4 options, auto-graded; CBT score auto-fills the Exam (60-pt) column AND keeps raw CBT log (source: 'cbt' in scores doc).
-- Subjects scoped per class.
+### Done this session
+- ✅ **Migration** — full repo cloned, deps installed, supervisor running, all 5 demo logins working.
+- ✅ **P0 #1 — WhatsApp-verified payment gate**:
+  - `RegisterIn.whatsapp_phone` added; stored on school doc.
+  - Register endpoint returns `pending_verification: true` and does NOT auto-login.
+  - Login already blocks `verification_status="pending_payment"`/`"rejected"` schools (existing).
+  - `PublicBankReceiptIn.whatsapp_code` added; receipt upload flips school to `"pending_code"`.
+  - New super-admin endpoints: `GET /superadmin/verification-queue`, `POST /superadmin/schools/{id}/whatsapp-code`, `POST /superadmin/schools/{id}/verify`.
+  - Approve cascades to: school active + receipt approved + subscription tier/duration/expiry set.
+  - Frontend new page `/pending` with bank-details box, tier selector, WhatsApp deep-link, receipt upload + 6-digit code input.
+  - SuperAdmin dashboard new "Verification queue" tab with badge count, generate-code dialog with WhatsApp deep-link, approve/reject buttons, code-match indicator.
+- ✅ **P0 #10 — Report card upgrades**:
+  - Reports endpoint now returns `subjects_scored`, `total_subjects`, `principal_comment`, `teacher_comment` (auto-remarks from average).
+  - ReportCard.jsx fully restyled to use `school.brand_color` (border-top stripe, table header, comment boxes, accents) and `school.logo_url` (top-left logo box).
+  - Per-subject "Remark" column added (Excellent/Very Good/etc. by grade).
+  - "Subjects scored: X of Y" surfaced in student bio panel.
+  - Principal + class teacher comment boxes with brand-tinted backgrounds.
+- ✅ **P0 #11 — Parent portal children list**:
+  - `/api/students` parent filter now uses case-insensitive regex on `parent_email` (defensive against case/whitespace drift when school admin creates parent accounts).
 
-## Phase-1 implemented (Feb 2026)
-- ✅ Backend FastAPI with modular routers + MongoDB indexes + idempotent demo data seeding.
-- ✅ JWT auth (httpOnly cookie + Bearer header).
-- ✅ Bulk Excel student upload, score & skill batch upserts, auto-grade A–F.
-- ✅ Digital Report Card endpoint with QR + Debt Lock.
-- ✅ Stripe checkout via emergentintegrations + direct stripe SDK fallback for metadata bug.
-- ✅ Bank receipt upload + super-admin approve/reject; auto-activates subscription.
-- ✅ Super Admin: kill-switch, password override, leads, stats.
-- ✅ React frontend with Outfit + IBM Plex Sans typography, brand palette, Nigerian imagery.
-- ✅ Landing page (hero, features, pricing toggle 1T/2T/Full, testimonials, contact).
-- ✅ Login / Register, all dashboards (school admin / teacher / parent / super admin), Report Card with QR.
-- ✅ 30/30 Phase-1 backend tests passing.
+### Verified end-to-end (curl)
+- Fresh register → login blocked → super admin generates code → school posts public receipt with code → queue shows match → approve → login succeeds → school_admin role.
+- Demo school backfilled with `brand_color="#002147"` and `whatsapp_phone`.
+- Reports endpoint returns new fields with correct auto-remarks for avg=86.5%.
+- Parent (`parent@demo.school`) sees 2 children (Adaeze + Emeka).
 
-## Phase-2 implemented (Feb 2026)
-- ✅ **Student role** with login (`/api/auth/login`, `/api/students/me`).
-- ✅ **Subject management per class** — `/api/subjects` (GET/PUT/DELETE).
-- ✅ **CBT MCQ engine** — `/api/cbt/exams` CRUD, publish/unpublish, attempts start/submit (auto-graded).
-- ✅ **CBT auto-fills Exam column** — submit converts % to /60 score, preserves CA, recomputes total/grade, tags `source='cbt'`.
-- ✅ **One-shot exam attempts** — repeated submit returns 400; cross-student submit returns 403.
-- ✅ **Student dashboard** — passport card, subjects grid, CBT cards (Take exam / Done with %), Result Checker with Debt Lock.
-- ✅ **CBT take page** — sticky countdown timer, question palette, option select with brand styling, submit confirm dialog, post-submit results screen.
-- ✅ **Teacher dashboard CBT tab** — exam library, dynamic MCQ builder dialog (mark correct option), publish toggle, attempts viewer with student names.
-- ✅ **School admin dashboard** — Subjects tab (per-class management), passport thumbnail per student row, "Create login" button per student row.
-- ✅ **Passport upload** — base64 data URL stored on student doc; rendered in report card + student dashboard.
-- ✅ **PWA** — manifest.json (theme #002147, logo icon, standalone), basic service worker (cache app shell, never cache /api).
-- ✅ Demo seed updated: class_subjects for JSS 1, sample published CBT (5 MCQs), student login `adaeze@demo.school` / `Student@123`.
-- ✅ 45/45 backend tests passing (30 Phase-1 + 15 Phase-2).
-- ⏭️ **Deferred**: offline CBT cache (per your choice — PWA shell only).
-- ⏭️ **Deferred**: live email out for Contact Us (per your choice — DB-only).
+## P0 backlog remaining (after this session)
+2. Pagination on every table (>10–15 rows)
+3. Navbar dropdown must open under avatar (not far-left)
+4. 2FA confirmation modal + Pause/Restrict/Archive instead of hard-delete
+5. Dual-role landing cards for promoted teachers
+6. Teacher scoping — only see students they teach (class × subject pairs)
+7. Fix "All Classes" / "Term" filter buttons (error)
+8. Activity tab on School Admin (render /api/audit)
+9. Per-school receipt history visible to school admin
+12. "Test School" sandbox button on landing for sales conversion
+13. OG + Twitter meta tags in index.html; Corner Streams email in footer
+14. Auto-email receipts to thecornerstreams@gmail.com (BLOCKED on Resend/SendGrid key)
 
-## Phase-3 implemented (Feb 2026 — addresses user pushback)
-- ✅ **Public registration is school-admin only** — teachers/parents/students can no longer self-register; schools build their own personnel from inside the dashboard.
-- ✅ **Setup checklist** on the school admin Overview tab — visual progress bar with 7 actionable steps so a fresh school can immediately test every flow.
-- ✅ **School Profile builder tab** — logo upload, motto, address, phone, email, founded year, website. Renders on report cards.
-- ✅ **Users tab** — school admin creates/deletes teacher and parent logins (`POST /api/users`, `DELETE /api/users/{id}`).
-- ✅ **Eye/EyeOff password toggle** on every password input (PasswordInput component).
-- ✅ **Scroll-reveal animations** on landing page (Intersection Observer + CSS) + button micro-interactions (`.btn-anim` lift on hover, scale on press).
-- ✅ **Subdomain routing** for `admin.cornerstreams.com` — host check forces super-admin entry; `/admin` route as fallback (`/login?admin=1`).
-- ✅ **Annual cumulative report** — `GET /api/reports/annual/{student_id}?year=2025/2026` returns 3-term subject matrix, session average, promotion status (Promoted to next class / Repeat current class), aggregated skill ratings, QR. Frontend route: `/report/annual/:studentId`. Buttons added to Parent Portal + Student Dashboard.
-- ✅ All 45/45 tests still passing (phase-1 register-parent test updated to assert new 422 behavior).
-
-## Phase-4 implemented (Feb 2026 — autonomous "make it productive" pass)
-- ✅ **Recharts wired across all admin sections** (brand colors only — Navy / Green / Electric Blue):
-  - **Super Admin** — Analytics tab: school growth area chart (6 months), subscription tier donut, receipts pipeline bar, leads funnel bar, payment volume tile.
-  - **School Admin Overview** — students-per-class bar, debt distribution donut, gender split donut, CBT activity area, subject averages bar.
-  - **Parent Portal** — per-child term progression line chart (loaded inline below each child card when fees are clear).
-  - **Student Dashboard** — personal term progression line + subject snapshot radar chart.
-- ✅ **CBT post-submit review** — `GET /api/cbt/attempts/{id}/review` returns full Q&A with correct answers + student picks. Frontend `/cbt/review/:attemptId` page colors correct vs. wrong, surfaced from the take-result screen and as a "Review answers" button on every completed exam card.
-- ✅ **Welcome Pack** — `/welcome-pack` route: print-ready A4 onboarding pack with school logo + motto, teacher list, parent portal directory, tear-off student login slips. One-click PDF via browser print.
-- ✅ **`/api/analytics/super`, `/api/analytics/school`, `/api/analytics/student/{id}`** — three aggregation endpoints with role-scoped data.
-- ✅ All 45/45 backend tests still passing. Frontend lint clean.
-
-## Phase-D1 implemented (May 2026 — User management v2 + bulk onboarding)
-- ✅ **Fernet password vault** (`backend/password_vault.py`) — admin-recoverable auto-passwords stored encrypted-at-rest with a key derived from `JWT_SECRET`. Strong 10-char generator avoids visually confusing chars.
-- ✅ **`POST /api/auth/change-password`** — every user (teacher / parent / student / admin) can change their own password from their dashboard. Wipes admin-recoverable copy + sets `password_changed_by_user=true`.
-- ✅ **`GET /api/users/{id}/reveal-password`** — admin reveals the *original* auto password until user changes it; returns 410 once they've changed it (industry-standard recovery flow).
-- ✅ **`POST /api/users/{id}/reset-password`** — admin generates a fresh auto-password (revealed once). Audit-logged.
-- ✅ **`POST /api/users/{id}/promote` & `/demote`** — admin grants admin-powers to a teacher/parent (they keep their primary role, gain `is_admin=true` flag). Cannot demote yourself or the primary school_admin. Last-admin deletion blocked.
-- ✅ **`auth_utils.require_roles` updated** — `is_admin=true` satisfies any `school_admin`-protected endpoint. `ProtectedRoute` updated to match on the frontend.
-- ✅ **Bulk uploads** (admin distributes credentials only — teachers see masked passwords):
-  - **`POST /api/users/bulk-teachers`** — admin only. Auto-generates passwords for blank cells.
-  - **`POST /api/users/bulk-parents`** — admin OR class teacher. Strict student-on-roster lookup (rows for unknown students skipped). Teachers restricted to their `assigned_classes`; passwords returned masked. Existing parent emails get linked (no duplicate user).
-  - **`POST /api/users/bulk-students`** with `with_login=true` (default) — admin only. Auto-creates student record AND a `firstname.lastname.<school-handle>@<handle>.school` login + auto-password. Auto-expands `school.classes` with any new class_name.
-- ✅ **Cleaned-up Excel templates** (`/api/templates/{parents,students,teachers,cbt-questions}.xlsx`) — single "Data" sheet with real sample rows only (no blank placeholder rows / stray helper text). Helper text moved to hover-tooltip comments on header cells + a separate "📖 Instructions" sheet.
-- ✅ **Frontend components**:
-  - `ChangePasswordDialog` — reusable, mounted in Navbar dropdown (works in all dashboards).
-  - `BulkUploadDialog` — used by school admin (teachers/students/parents) and class teachers (parents only).
-  - `CredentialsModal` — show-once table with per-row reveal + copy-to-clipboard + one-click Excel download.
-  - **Navbar** — user dropdown with Dashboard / Admin dashboard (for promoted users) / Change password / Sign out. "ADMIN POWERS" badge for promoted teachers/parents.
-  - **SchoolAdminDashboard Users tab** — redesigned with Bulk Teachers/Parents/Students + per-row Reveal / Reset / Promote / Demote / Delete actions and Auto vs User-set password badges.
-  - **TeacherDashboard** — new "Parents" tab for class teachers to bulk-onboard parents for their assigned class(es).
-- ✅ Seeded demo users now have their original passwords pre-encrypted in the vault — "Reveal" works on every demo account from day one.
-- ✅ **55/55 backend tests passing** (25 new Phase-D1 + 30 Phase A/B/C regression).
-
-
-## Demo accounts (seeded)
-| Role | Email | Password |
-|---|---|---|
-| Super admin | super@cornerstreams.com | Super@123 |
-| School admin | admin@demo.school | Admin@123 |
-| Teacher | teacher@demo.school | Teacher@123 |
-| Parent | parent@demo.school | Parent@123 |
-| **Student** | **adaeze@demo.school** | **Student@123** |
-
-## Backlog (P0/P1/P2)
-
-### P0 — USER FEEDBACK from Feb 2026 testing session (NEXT-UP, prioritized)
-
-**🔒 CRITICAL — Payment gate before any dashboard access (top priority)**
-- ❗ **NEW FLOW**: Schools must NOT access ANY dashboard until paid + verified.
-  1. Register school info → no auto-login.
-  2. Choose tier + duration → bank-transfer page with UBA / 2936722942 / Mervyndean Ifeanyichukwu Hilary details.
-  3. School transfers NGN → uploads receipt + types in WhatsApp verification code received from +2348141880550.
-  4. Code is sent manually (or via WhatsApp Cloud API once integrated) by Mervyn after he sees the transfer in his bank app.
-  5. School enters the code on a verification page; receipt also uploaded.
-  6. Super Admin sees pending receipts + matching codes in his dashboard.
-  7. Super Admin approves → school's first admin login becomes ACTIVE → dashboard unlocks.
-  8. Until then: every login attempt returns "Awaiting payment verification — please complete bank transfer & enter your WhatsApp code".
-- ❗ **Backend changes needed**:
-  - `users` collection: add `verification_status` field ("pending_payment" | "pending_code" | "active" | "rejected"); default new school admins to "pending_payment".
-  - New endpoint `POST /api/auth/request-verification` (school enters bank-transfer details + code).
-  - New endpoint `POST /api/superadmin/verification-codes` (Mervyn generates + sees code per pending school).
-  - Login endpoint must check `verification_status == "active"` else reject with 403 + clear message.
-  - Add `whatsapp_phone` to school registration so Mervyn knows where to WhatsApp the code.
-- ❗ **Frontend changes needed**:
-  - Register flow: Step 1 (school details) → Step 2 (pick tier) → Step 3 (bank transfer details + upload receipt) → Step 4 (enter WhatsApp code received from +2348141880550) → "Pending approval" screen.
-  - Super Admin dashboard: new "Verification queue" tab — generate codes, mark approved/rejected, view receipts side-by-side.
-
-**✅ School branding (DONE Feb 2026)**
-- Registration now collects `brand_color` (HEX) + `logo_url` (base64 PNG/JPG, max 600KB), stored on school doc. NEXT: ReportCard.jsx + AnnualReport.jsx must read `school.brand_color` for headers/borders and `school.logo_url` for the top-left logo (already P0-#10 below).
-
-**✅ Brand color in UI toggles (DONE Feb 2026)**
-- `.pill-toggle` active state changed from Electric Blue to brand Navy with green hover.
-
-**Pagination**
-- ❗ Add pagination (page navigation when rows exceed 10–15) to EVERY table/list: Users tab, Students tab, Subjects, CBT exams, Leads, Receipts, Audit/Activity, Parent's children list, etc.
-
-**Admin powers safety (Test 4 feedback)**
-- ❗ **2FA for admin-power actions** — when an admin performs destructive/sensitive actions (Delete user, Promote, Demote, Reset password, Kill-switch toggle, Receipt approval), require an extra confirmation step:
-  - Step 1: confirmation pop-up with action summary (NOT a left-side notification — must be a centered modal like Bulk upload dialog).
-  - Step 2: Delete button must offer choices: **Pause / Restrict / Archive / Save** instead of permanent delete, so no client data is ever truly lost. Hard-delete should require typing user email.
-- ❗ **Dual-role landing for promoted users** — after a teacher is promoted, on login they should see **two clickable cards**: "Access Admin Dashboard" + "Access Teacher Dashboard" — picking one routes accordingly. Navbar should keep both available.
-
-**Teacher dashboard scoping (BIG — ATTENTION flagged by user)**
-- ❗ **Subject teachers must only see students they teach** — currently teachers see all students in their `assigned_class`. New rule: a teacher is linked to (class, subject) pairs; on the Scores/Reports tab they can only enter scores for THEIR subject(s) and only for students in classes where they teach that subject.
-- ❗ **Report cards are inputted ONLY by the teacher who teaches that child for that subject** — score input must be locked per teacher×subject×class.
-- ❗ **"All Classes" / "Term" filter buttons currently throw errors** — needs fixing.
-
-**School Admin activity feed (Test 9 feedback)**
-- ❗ **Activity tab on School Admin dashboard** — render the existing `/api/audit` events so school admin sees: receipts uploaded, new admins created, password resets, promotions, bulk uploads, kill-switch toggles, etc.
-- ❗ **Receipt history per school** — school admin sees their own receipts list (status pending/approved/rejected) — not just super admin.
-
-**Navbar UX**
-- ❗ When clicking the top-right avatar, the dropdown menu must open **directly under the avatar** (right-aligned), NOT on the far left of the screen.
-
-**Report card upgrades (Test 7 — user says previous directions were missed)**
-- ❗ School logo top-left of report card.
-- ❗ Principal's comment + Teacher's comment text fields per student per term.
-- ❗ Auto-remarks based on grade (e.g., A → "Outstanding"; F → "Needs urgent help").
-- ❗ "Subjects scored: X of Y" summary line.
-- ❗ Bordered boxes, consistent navy headers, visual upgrade.
-
-**Parent Portal (Test 8 — Failed: nothing showed as directed)**
-- ❗ Debug why parent@demo.school's children list, term progression chart, and report card buttons did not render. Verify `/api/parent/children` and seed data.
-
-**Bank-transfer payments (interim, no Paystack yet)**
-- ✅ **DONE Feb 2026** — UBA / 2936722942 / Mervyndean Ifeanyichukwu Hilary displayed INSIDE School Admin "Upload bank receipt" dialog only (not on public landing). "Pay by bank transfer" is now the primary CTA on every tier card and pre-fills tier + price. Note field renamed to "School name + Sender's name (for validation)" and made mandatory. WhatsApp +2348141880550 noted for confirmation. Receipt upload → super-admin verify queue flow wired.
-- ❗ **STILL TODO (next session)**:
-  1. **Move payment INTO registration flow** — current: Register → Dashboard (free) → Subscription tab. Desired: Register school info → Choose tier → Bank-transfer page with account details → Upload receipt → Account pending until superadmin approval → THEN credentials accepted + dashboard unlocked. Multi-step wizard component.
-  2. **Email-out of every uploaded receipt** to `thecornerstreams@gmail.com` (BLOCKED — needs Resend/SendGrid API key).
-  3. **New-school onboarding directions on dashboard** — setup checklist already exists in code (Phase-3 Setup Checklist). Make each button on it clickable to walk admin through every step (Subjects → Students → Teachers → Parents → CBT → Reports). Each step opens its respective dialog/tab automatically.
-
-### P0 — pre-existing (still valid)
-- Live email-out for Contact Us → thecornerstreams@gmail.com (Resend / SendGrid).
-- Offline CBT cache (deferred from Phase-2).
-- Multi-class support: more than just JSS 1 (admin already has tools — needs roster expansion).
-
-### P1 — significant features
-- CBT question types: True/False, image-based, short-text.
-- Per-student subject overrides (currently per-class).
-- Annual session report (combined 1st/2nd/3rd term cumulative average).
-- Stripe webhook signature verification + production NGN multi-currency support.
-- Student attempt review screen (see correct answers after submission).
-
-### P2 — nice-to-have
-- Per-student notes / teacher comments on reports.
-- Subscription auto-renewal reminders.
-- Email/SMS notifications when balance is cleared (auto-Debt-Lock release).
-- Audit log of super-admin actions.
-- CBT exam randomization / question shuffling.
+## Tech notes
+- Backend uses `MONGO_URL` + `DB_NAME` from `.env` (preserved). Added: `JWT_SECRET`, `ADMIN_EMAIL=super@cornerstreams.com`, `ADMIN_PASSWORD=Super@123`, `FRONTEND_URL`.
+- Stripe webhook still wired but `STRIPE_API_KEY` not present in env — checkout flow will fail by design; bank-transfer + WhatsApp flow is the primary path.
+- Demo credentials: see `/app/memory/test_credentials.md`.

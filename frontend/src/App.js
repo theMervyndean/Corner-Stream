@@ -18,6 +18,7 @@ import ParentPortal from "@/pages/ParentPortal.jsx";
 import SuperAdmin from "@/pages/SuperAdmin.jsx";
 import ReportCard from "@/pages/ReportCard.jsx";
 import CheckoutReturn from "@/pages/CheckoutReturn.jsx";
+import PendingVerification from "@/pages/PendingVerification.jsx";
 import InstallPrompt from "@/components/InstallPrompt.jsx";
 
 import "@/App.css";
@@ -53,6 +54,7 @@ function AnimatedRoutes() {
         <Route path="/" element={<HomeRoute />} />
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
+        <Route path="/pending" element={<PendingVerification />} />
         <Route path="/dashboard/school" element={<ProtectedRoute roles={["school_admin"]}><SchoolAdminDashboard /></ProtectedRoute>} />
         <Route path="/dashboard/teacher" element={<ProtectedRoute roles={["teacher"]}><TeacherDashboard /></ProtectedRoute>} />
         <Route path="/dashboard/parent" element={<ProtectedRoute roles={["parent"]}><ParentPortal /></ProtectedRoute>} />

@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { api, formatApiError } from "@/lib/api";
 import { toast } from "sonner";
-import { Building2, Users, Inbox, AlertTriangle, Receipt, KeyRound, Eye } from "lucide-react";
+import { Building2, Users, Inbox, AlertTriangle, Receipt, KeyRound, Eye, ShieldCheck } from "lucide-react";
 import { ChartCard, GrowthArea, DonutChart, BarSimple } from "@/components/Charts.jsx";
 
 export default function SuperAdmin() {
@@ -22,21 +22,25 @@ export default function SuperAdmin() {
   const [overrideOpen, setOverrideOpen] = useState(false);
   const [override, setOverride] = useState({ user_email: "", new_password: "" });
   const [viewReceipt, setViewReceipt] = useState(null);
+  const [verifQueue, setVerifQueue] = useState([]);
+  const [generatedCode, setGeneratedCode] = useState(null);
 
   const refresh = async () => {
     try {
-      const [s, sc, l, r, an] = await Promise.all([
+      const [s, sc, l, r, an, vq] = await Promise.all([
         api.get("/superadmin/stats"),
         api.get("/superadmin/schools"),
         api.get("/leads"),
         api.get("/payments/bank-receipts"),
         api.get("/analytics/super"),
+        api.get("/superadmin/verification-queue"),
       ]);
       setStats(s.data);
       setSchools(sc.data.schools || []);
       setLeads(l.data.leads || []);
       setReceipts(r.data.receipts || []);
       setAnalytics(an.data);
+      setVerifQueue(vq.data.items || []);
     } catch (e) {
       toast.error(formatApiError(e.response?.data?.detail) || e.message);
     }
@@ -80,6 +84,22 @@ export default function SuperAdmin() {
     } catch (e) { toast.error(formatApiError(e.response?.data?.detail) || e.message); }
   };
 
+  const generateCode = async (schoolId, schoolName, whatsapp) => {
+    try {
+      const { data } = await api.post(`/superadmin/schools/${schoolId}/whatsapp-code`);
+      setGeneratedCode({ code: data.code, school_name: schoolName, whatsapp_phone: whatsapp || data.whatsapp_phone });
+      refresh();
+    } catch (e) { toast.error(formatApiError(e.response?.data?.detail) || e.message); }
+  };
+
+  const verifyDecision = async (schoolId, decision) => {
+    try {
+      await api.post(`/superadmin/schools/${schoolId}/verify`, { decision });
+      toast.success(decision === "approve" ? "School activated. Dashboard unlocked." : "School marked rejected.");
+      refresh();
+    } catch (e) { toast.error(formatApiError(e.response?.data?.detail) || e.message); }
+  };
+
   return (
     <div className="min-h-screen">
       <Navbar variant="dashboard" />
@@ -117,13 +137,92 @@ export default function SuperAdmin() {
           </div>
         )}
 
-        <Tabs defaultValue="schools" className="mt-10">
+        <Tabs defaultValue="verification" className="mt-10">
           <TabsList>
+            <TabsTrigger value="verification" data-testid="super-tab-verification">
+              Verification queue{verifQueue.length > 0 && <Badge className="ml-2 bg-amber-500 text-white">{verifQueue.length}</Badge>}
+            </TabsTrigger>
             <TabsTrigger value="schools" data-testid="super-tab-schools">Schools</TabsTrigger>
             <TabsTrigger value="analytics" data-testid="super-tab-analytics">Analytics</TabsTrigger>
             <TabsTrigger value="receipts" data-testid="super-tab-receipts">Bank receipts</TabsTrigger>
             <TabsTrigger value="leads" data-testid="super-tab-leads">Leads</TabsTrigger>
           </TabsList>
+
+          <TabsContent value="verification" className="mt-4">
+            <div className="cs-card p-5">
+              <div className="flex items-start gap-3 mb-4">
+                <div className="w-10 h-10 rounded-md cs-bg-green text-white flex items-center justify-center"><ShieldCheck size={18} /></div>
+                <div>
+                  <div className="font-display font-bold cs-text-navy">Schools awaiting activation</div>
+                  <div className="text-xs text-slate-500">Generate a 6-digit code, WhatsApp it to the school, then approve once they upload the matching receipt + code.</div>
+                </div>
+              </div>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="cs-bg-navy hover:cs-bg-navy">
+                      <TableHead className="text-white">School</TableHead>
+                      <TableHead className="text-white">Admin</TableHead>
+                      <TableHead className="text-white">WhatsApp</TableHead>
+                      <TableHead className="text-white">Status</TableHead>
+                      <TableHead className="text-white">Code</TableHead>
+                      <TableHead className="text-white">Receipt</TableHead>
+                      <TableHead className="text-white">Code typed</TableHead>
+                      <TableHead className="text-white">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {verifQueue.map((q, i) => {
+                      const codeMatches = q.verification_code && q.latest_receipt?.whatsapp_code && q.verification_code === q.latest_receipt.whatsapp_code;
+                      return (
+                        <TableRow key={q.school_id} className={i % 2 ? "bg-slate-50" : ""} data-testid={`verif-row-${q.school_id}`}>
+                          <TableCell className="font-medium text-sm">{q.school_name}</TableCell>
+                          <TableCell className="text-xs">{q.admin_email}</TableCell>
+                          <TableCell className="text-xs font-mono">{q.whatsapp_phone || "—"}</TableCell>
+                          <TableCell>
+                            <Badge className={q.verification_status === "pending_payment" ? "bg-amber-500 text-white" : "cs-bg-blue text-white"}>
+                              {q.verification_status}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="font-mono text-sm">
+                            {q.verification_code ? (
+                              <span className="cs-text-blue font-bold">{q.verification_code}</span>
+                            ) : <span className="text-slate-400">—</span>}
+                          </TableCell>
+                          <TableCell>
+                            {q.latest_receipt ? (
+                              <Button size="sm" variant="outline" onClick={() => openReceipt(q.latest_receipt.id)} data-testid={`verif-view-${q.school_id}`}><Eye size={14} /></Button>
+                            ) : <span className="text-xs text-slate-400">Not uploaded</span>}
+                          </TableCell>
+                          <TableCell>
+                            {q.latest_receipt?.whatsapp_code ? (
+                              <span className={`font-mono text-sm font-bold ${codeMatches ? "cs-text-green" : "text-amber-600"}`}>
+                                {q.latest_receipt.whatsapp_code} {codeMatches && "✓"}
+                              </span>
+                            ) : <span className="text-xs text-slate-400">—</span>}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex flex-wrap gap-2">
+                              <Button size="sm" variant="outline" onClick={() => generateCode(q.school_id, q.school_name, q.whatsapp_phone)} data-testid={`verif-gen-${q.school_id}`}>
+                                {q.verification_code ? "Regenerate code" : "Generate code"}
+                              </Button>
+                              {q.latest_receipt && (
+                                <>
+                                  <Button size="sm" className="cs-bg-green text-white hover:opacity-90" onClick={() => verifyDecision(q.school_id, "approve")} data-testid={`verif-approve-${q.school_id}`}>Approve</Button>
+                                  <Button size="sm" variant="destructive" onClick={() => verifyDecision(q.school_id, "reject")} data-testid={`verif-reject-${q.school_id}`}>Reject</Button>
+                                </>
+                              )}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                    {!verifQueue.length && (<TableRow><TableCell colSpan={8} className="text-center text-slate-500 py-10">No schools awaiting verification. New registrations show up here.</TableCell></TableRow>)}
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
+          </TabsContent>
           <TabsContent value="analytics" className="mt-4">
             {analytics ? (
               <div className="grid lg:grid-cols-2 gap-5">
@@ -267,6 +366,32 @@ export default function SuperAdmin() {
             <div><Label>New password</Label><Input type="password" value={override.new_password} onChange={(e) => setOverride({ ...override, new_password: e.target.value })} data-testid="po-pw" /></div>
           </div>
           <DialogFooter><Button onClick={submitOverride} className="cs-bg-navy text-white hover:opacity-90" data-testid="po-submit">Update password</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!generatedCode} onOpenChange={(o) => !o && setGeneratedCode(null)}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>WhatsApp this code to the school</DialogTitle></DialogHeader>
+          {generatedCode && (
+            <div className="space-y-4">
+              <div className="text-sm text-slate-600">
+                Send this 6-digit code to <b>{generatedCode.school_name}</b> on WhatsApp. They will paste it into their pending-verification page.
+              </div>
+              <div className="text-center">
+                <div className="font-mono text-5xl tracking-widest font-bold cs-text-navy py-4 bg-slate-50 rounded-lg border" data-testid="generated-code">{generatedCode.code}</div>
+              </div>
+              <div className="text-xs text-slate-500">Send to: <b>{generatedCode.whatsapp_phone || "(no number on file)"}</b></div>
+              {generatedCode.whatsapp_phone && (
+                <a
+                  href={`https://wa.me/${generatedCode.whatsapp_phone.replace(/\D/g, "")}?text=${encodeURIComponent(`Hello — your Corner Streams activation code for ${generatedCode.school_name} is: ${generatedCode.code}. Paste it on the verification page to unlock your dashboard.`)}`}
+                  target="_blank" rel="noreferrer"
+                  className="inline-flex items-center justify-center w-full rounded-full text-white font-semibold h-10 btn-anim"
+                  style={{ backgroundColor: "#25D366" }}
+                  data-testid="generated-code-wa-link"
+                >Open WhatsApp with this message</a>
+              )}
+            </div>
+          )}
         </DialogContent>
       </Dialog>
 

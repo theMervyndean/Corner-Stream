@@ -44,6 +44,11 @@ export function AuthProvider({ children }) {
     setError("");
     try {
       const { data } = await api.post("/auth/register", payload);
+      // If backend signals payment-verification pending, do NOT auto-login.
+      // Caller will navigate to /pending with the returned school info.
+      if (data && data.pending_verification) {
+        return { pending: true, school_id: data.school_id, school_email: data.school_email, school_name: data.school_name, message: data.message };
+      }
       localStorage.setItem("cs_token", data.token);
       setUser(data.user);
       return data.user;

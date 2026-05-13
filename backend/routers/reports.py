@@ -147,6 +147,32 @@ async def get_report(student_id: str, term: str = "1st Term", user: dict = Depen
 
     year = scores[0]["year"] if scores else "2025/2026"
 
+    # Total subjects for this class (so we can show "Subjects scored: X of Y")
+    class_subj_doc = await db.class_subjects.find_one(
+        {"school_id": student["school_id"], "class_name": student["class_name"]}, {"_id": 0},
+    )
+    total_subjects = len((class_subj_doc or {}).get("subjects") or []) or len(scores)
+
+    # Auto-remarks by grade for principal & teacher comments
+    if avg >= 75:
+        principal_comment = f"{student['name']} has performed excellently this term. Keep aiming higher."
+        teacher_comment = "An outstanding result — sets a strong example in class. Maintain this pace."
+    elif avg >= 65:
+        principal_comment = f"A very good performance from {student['name']}. Continue to put in the work."
+        teacher_comment = "Consistently strong work throughout the term. A little more push can take you to the top."
+    elif avg >= 55:
+        principal_comment = f"{student['name']} has shown good effort. There's room to improve."
+        teacher_comment = "Solid work in most subjects. Focus more on the weaker areas next term."
+    elif avg >= 45:
+        principal_comment = f"{student['name']}'s result is fair. More attention to academics is required."
+        teacher_comment = "Capable of much better. Please establish a study routine and seek help early."
+    elif avg >= 40:
+        principal_comment = f"{student['name']} just managed this term. A serious effort is needed next term."
+        teacher_comment = "Below expected standard. Parental support and extra coaching strongly advised."
+    else:
+        principal_comment = f"{student['name']}'s result is poor. We need parents to partner with us closely."
+        teacher_comment = "Significant improvement needed across the board. Please book a meeting with the class teacher."
+
     return {
         "debt_locked": debt_locked,
         "student": student,
@@ -157,6 +183,10 @@ async def get_report(student_id: str, term: str = "1st Term", user: dict = Depen
         "skill_ratings": skills,
         "average": avg,
         "promotion_status": promotion,
+        "total_subjects": total_subjects,
+        "subjects_scored": len(scores),
+        "principal_comment": principal_comment,
+        "teacher_comment": teacher_comment,
         "qr_code": qr_data_url,
         "qr_payload": qr_payload,
         "principal_signature": (school or {}).get("principal_name", "Principal"),
