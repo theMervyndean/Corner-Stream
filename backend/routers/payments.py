@@ -2,7 +2,7 @@
 import os
 from datetime import datetime, timezone, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 from typing import Optional
 from emergentintegrations.payments.stripe.checkout import (
     StripeCheckout, CheckoutSessionRequest,
@@ -160,6 +160,39 @@ class BankReceiptIn(BaseModel):
     note: Optional[str] = ""
 
 
+class PublicBankReceiptIn(BaseModel):
+    school_email: EmailStr
+    tier: str
+    duration: str
+    amount_ngn: float
+    file_data_url: str
+    note: Optional[str] = ""
+
+
+@router.post("/bank-receipt-public")
+async def upload_bank_receipt_public(payload: PublicBankReceiptIn):
+    """Public endpoint for pending schools (cannot log in yet) to submit their first receipt."""
+    db = get_db()
+    email = payload.school_email.lower().strip()
+    user = await db.users.find_one({"email": email, "role": "school_admin"})
+    if not user:
+        raise HTTPException(status_code=404, detail="School admin email not found. Please register first.")
+    doc = {
+        "id": new_id(),
+        "school_id": user["school_id"],
+        "submitted_by": email,
+        "tier": payload.tier,
+        "duration": payload.duration,
+        "amount_ngn": payload.amount_ngn,
+        "file_data_url": payload.file_data_url,
+        "note": payload.note or "",
+        "status": "pending",
+        "created_at": now_iso(),
+    }
+    await db.bank_receipts.insert_one(doc)
+    return {"ok": True, "message": "Receipt received. WhatsApp +234 814 188 0550 with your school name to confirm. Super Admin will activate your dashboard within hours."}
+
+
 @router.post("/bank-receipt")
 async def upload_bank_receipt(payload: BankReceiptIn, user: dict = Depends(require_roles("school_admin"))):
     db = get_db()
@@ -233,5 +266,8 @@ async def decide_receipt(receipt_id: str, payload: ReceiptDecision, user: dict =
             "subscription_duration": receipt["duration"],
             "subscription_expires_at": expires,
             "kill_switch": False,
+            "verification_status": "active",
         }})
+    elif new_status == "rejected":
+        await db.schools.update_one({"id": receipt["school_id"]}, {"$set": {"verification_status": "rejected"}})
     return {"ok": True, "status": new_status}

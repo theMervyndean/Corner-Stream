@@ -139,21 +139,27 @@ async def seed_demo_data():
             "address": "12 Ahmadu Bello Way, Ikeja, Lagos",
             "phone": "+2348012345678",
             "kill_switch": False,
+            "verification_status": "active",
             "subscription_tier": "unified_enterprise",
             "subscription_duration": "full_session",
             "subscription_expires_at": (datetime.now(timezone.utc) + timedelta(days=270)).isoformat(),
             "created_at": now_iso(),
         })
     else:
-        # Backfill school_type and classes for existing demo school
+        # Backfill school_type, classes, and verification_status for existing demo school
         existing = await db.schools.find_one({"id": demo_school_id})
         updates = {}
         if not existing.get("school_type"):
             updates["school_type"] = "secondary"
         if not existing.get("classes"):
             updates["classes"] = default_classes("secondary")
+        if not existing.get("verification_status"):
+            updates["verification_status"] = "active"
         if updates:
             await db.schools.update_one({"id": demo_school_id}, {"$set": updates})
+
+    # Backfill verification_status="active" for ALL pre-existing schools (so old seed isn't broken)
+    await db.schools.update_many({"verification_status": {"$exists": False}}, {"$set": {"verification_status": "active"}})
 
     # School admin
     if not await db.users.find_one({"email": "admin@demo.school"}):

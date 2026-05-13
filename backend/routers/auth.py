@@ -71,6 +71,7 @@ async def register(payload: RegisterIn, response: Response):
         "founded_year": "",
         "website": "",
         "kill_switch": False,
+        "verification_status": "pending_payment",
         "subscription_tier": None,
         "subscription_duration": None,
         "subscription_expires_at": None,
@@ -93,9 +94,13 @@ async def register(payload: RegisterIn, response: Response):
         user_doc["username"] = un
     await db.users.insert_one(user_doc)
 
-    token = create_access_token(user_id, email, "school_admin")
-    set_auth_cookie(response, token)
-    return {"user": _user_public(user_doc), "token": token}
+    # Payment gate: school admin cannot auto-login. They must pay + be verified by Super Admin.
+    return {
+        "ok": True,
+        "pending_verification": True,
+        "school_id": school_id,
+        "message": "School registered. To activate your account, transfer the tier amount to the bank account shown on the payment page, upload your receipt, and WhatsApp +234 814 188 0550 with your school name. Super Admin will activate your dashboard once payment is confirmed."
+    }
 
 
 @router.post("/login")
@@ -112,11 +117,15 @@ async def login(payload: LoginIn, response: Response):
     if not user or not verify_password(payload.password, user["password_hash"]):
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
-    # Kill-switch check for non-super-admins
+    # Kill-switch + payment-verification check for non-super-admins
     if user["role"] != "super_admin" and user.get("school_id"):
         school = await db.schools.find_one({"id": user["school_id"]})
         if school and school.get("kill_switch"):
             raise HTTPException(status_code=403, detail="Your school's subscription has been suspended. Please contact Corner Streams support.")
+        if school and school.get("verification_status") == "pending_payment":
+            raise HTTPException(status_code=403, detail="Awaiting payment verification. Please transfer the tier amount to UBA 2936722942 (Mervyndean Ifeanyichukwu Hilary), upload your receipt, then WhatsApp +234 814 188 0550 with your school name. Super Admin will activate your dashboard within hours.")
+        if school and school.get("verification_status") == "rejected":
+            raise HTTPException(status_code=403, detail="Payment verification rejected. Please WhatsApp +234 814 188 0550 to resolve.")
 
     token = create_access_token(user["id"], user["email"], user["role"])
     set_auth_cookie(response, token)
