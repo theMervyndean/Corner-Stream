@@ -166,6 +166,8 @@ async def seed_demo_data():
     # Backfill default brand_color on schools that don't have one (used by report card)
     await db.schools.update_many({"brand_color": {"$exists": False}}, {"$set": {"brand_color": "#002147"}})
     await db.schools.update_many({"brand_color": None}, {"$set": {"brand_color": "#002147"}})
+    # Backfill default score model: 40 CA + 60 Exam with 1 CA column (matches existing data)
+    await db.schools.update_many({"ca_max": {"$exists": False}}, {"$set": {"ca_max": 40, "exam_max": 60, "ca_count": 1}})
 
     # School admin
     if not await db.users.find_one({"email": "admin@demo.school"}):

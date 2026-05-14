@@ -178,26 +178,86 @@ async def upload_bank_receipt_public(payload: PublicBankReceiptIn):
     user = await db.users.find_one({"email": email, "role": "school_admin"})
     if not user:
         raise HTTPException(status_code=404, detail="School admin email not found. Please register first.")
+    return await _store_receipt_and_maybe_activate(
+        db=db, school_id=user["school_id"], submitted_by=email,
+        tier=payload.tier, duration=payload.duration, amount_ngn=payload.amount_ngn,
+        file_data_url=payload.file_data_url, note=payload.note, whatsapp_code=payload.whatsapp_code,
+    )
+
+
+@router.post("/submit-verification")
+async def submit_verification(payload: BankReceiptIn, code: str = "", user: dict = Depends(require_roles("school_admin"))):
+    """In-dashboard endpoint — school admin uploads receipt + types 6-digit code.
+    If code matches the one super admin generated, school is auto-activated immediately.
+    Otherwise it sits in the verification queue until super admin approves manually."""
+    db = get_db()
+    return await _store_receipt_and_maybe_activate(
+        db=db, school_id=user["school_id"], submitted_by=user["email"],
+        tier=payload.tier, duration=payload.duration, amount_ngn=payload.amount_ngn,
+        file_data_url=payload.file_data_url, note=payload.note, whatsapp_code=code,
+    )
+
+
+async def _store_receipt_and_maybe_activate(*, db, school_id, submitted_by, tier, duration, amount_ngn, file_data_url, note, whatsapp_code):
+    """Shared logic: insert receipt, then auto-activate if the typed code matches the school's verification_code."""
+    from datetime import datetime, timezone, timedelta
+    code = (whatsapp_code or "").strip()
+    school = await db.schools.find_one({"id": school_id}, {"_id": 0})
+    if not school:
+        raise HTTPException(status_code=404, detail="School not found")
+
     doc = {
         "id": new_id(),
-        "school_id": user["school_id"],
-        "submitted_by": email,
-        "tier": payload.tier,
-        "duration": payload.duration,
-        "amount_ngn": payload.amount_ngn,
-        "file_data_url": payload.file_data_url,
-        "note": payload.note or "",
-        "whatsapp_code": (payload.whatsapp_code or "").strip(),
+        "school_id": school_id,
+        "submitted_by": submitted_by,
+        "tier": tier,
+        "duration": duration,
+        "amount_ngn": amount_ngn,
+        "file_data_url": file_data_url,
+        "note": note or "",
+        "whatsapp_code": code,
         "status": "pending",
         "created_at": now_iso(),
     }
     await db.bank_receipts.insert_one(doc)
-    # Mark school as pending_code so super admin can see they're in the queue
+
+    # Auto-activate when typed code matches super-admin-generated code
+    stored_code = school.get("verification_code")
+    if stored_code and code and stored_code == code:
+        days = {"1_term": 90, "2_terms": 180, "full_session": 270}.get(duration, 90)
+        expires = (datetime.now(timezone.utc) + timedelta(days=days)).isoformat()
+        await db.schools.update_one(
+            {"id": school_id},
+            {"$set": {
+                "verification_status": "active",
+                "verification_code": None,
+                "verified_at": now_iso(),
+                "verified_by": "auto-code-match",
+                "subscription_tier": tier,
+                "subscription_duration": duration,
+                "subscription_expires_at": expires,
+                "kill_switch": False,
+            }},
+        )
+        await db.bank_receipts.update_one(
+            {"id": doc["id"]},
+            {"$set": {"status": "approved", "decided_by": "auto-code-match", "updated_at": now_iso()}},
+        )
+        return {"ok": True, "activated": True, "message": "Dashboard unlocked. Welcome to Corner Streams."}
+
+    # Otherwise flip to pending_code and wait for super admin
     await db.schools.update_one(
-        {"id": user["school_id"]},
+        {"id": school_id},
         {"$set": {"verification_status": "pending_code", "updated_at": now_iso()}},
     )
-    return {"ok": True, "message": "Receipt received. WhatsApp +234 814 188 0550 with your school name to confirm. Super Admin will activate your dashboard within hours."}
+    if not stored_code:
+        return {"ok": True, "activated": False, "message": "Receipt received. Corner Streams will WhatsApp you the activation code within hours, then paste it here to unlock."}
+    return {"ok": True, "activated": False, "message": "Code didn't match yet. Super Admin will review and activate your dashboard within hours."}
+
+
+@router.post("/bank-receipt-public-legacy-deleted")
+async def _placeholder():
+    pass
 
 
 @router.post("/bank-receipt")

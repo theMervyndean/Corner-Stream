@@ -72,6 +72,9 @@ async def register(payload: RegisterIn, response: Response):
         "founded_year": "",
         "website": "",
         "whatsapp_phone": (payload.whatsapp_phone or "").strip(),
+        "ca_max": 40,
+        "exam_max": 60,
+        "ca_count": 1,
         "kill_switch": False,
         "verification_status": "pending_payment",
         "verification_code": None,
@@ -122,15 +125,19 @@ async def login(payload: LoginIn, response: Response):
     if not user or not verify_password(payload.password, user["password_hash"]):
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
-    # Kill-switch + payment-verification check for non-super-admins
+    # Kill-switch check for non-super-admins (hard block — engaged by super admin manually)
     if user["role"] != "super_admin" and user.get("school_id"):
         school = await db.schools.find_one({"id": user["school_id"]})
         if school and school.get("kill_switch"):
             raise HTTPException(status_code=403, detail="Your school's subscription has been suspended. Please contact Corner Streams support.")
-        if school and school.get("verification_status") == "pending_payment":
-            raise HTTPException(status_code=403, detail="Awaiting payment verification. Please transfer the tier amount to UBA 2936722942 (Mervyndean Ifeanyichukwu Hilary), upload your receipt, then WhatsApp +234 814 188 0550 with your school name. Super Admin will activate your dashboard within hours.")
+        # NOTE: pending_payment / pending_code / rejected schools CAN now log in.
+        # The dashboard renders a locked overlay until super admin approves.
+        # Only the school_admin role gets this overlay treatment — teacher/parent/student
+        # for an unverified school still get blocked because they shouldn't see anything yet.
+        if user["role"] != "school_admin" and school and school.get("verification_status") in ("pending_payment", "pending_code"):
+            raise HTTPException(status_code=403, detail="Your school is awaiting payment verification. Ask the school administrator to complete activation first.")
         if school and school.get("verification_status") == "rejected":
-            raise HTTPException(status_code=403, detail="Payment verification rejected. Please WhatsApp +234 814 188 0550 to resolve.")
+            raise HTTPException(status_code=403, detail="Payment verification was rejected. WhatsApp +234 814 188 0550 to resolve.")
 
     token = create_access_token(user["id"], user["email"], user["role"])
     set_auth_cookie(response, token)
