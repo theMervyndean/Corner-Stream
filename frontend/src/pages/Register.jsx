@@ -15,7 +15,7 @@ export default function Register() {
   const [params] = useSearchParams();
   const [form, setForm] = useState({
     school_name: "", school_type: "secondary", principal_name: "", school_address: "", school_phone: "",
-    brand_color: "#002147", logo_url: "",
+    brand_color: "#002147", logo_url: "", whatsapp_phone: "",
     name: "", email: "", password: "",
   });
   const [submitting, setSubmitting] = useState(false);
@@ -35,7 +35,19 @@ export default function Register() {
     e.preventDefault();
     setSubmitting(true);
     try {
-      await register(form);
+      const result = await register(form);
+      if (result && result.pending) {
+        toast.success("School registered — complete payment to activate your dashboard.");
+        const search = new URLSearchParams({
+          school_id: result.school_id,
+          email: result.school_email,
+          name: result.school_name,
+          ...(tier ? { tier } : {}),
+          ...(duration ? { duration } : {}),
+        }).toString();
+        navigate(`/pending?${search}`);
+        return;
+      }
       toast.success(`Welcome — ${form.school_name} is live on Corner Streams.`);
       const search = tier && duration ? `?tier=${tier}&duration=${duration}` : "";
       navigate(`/dashboard/school${search}`);
@@ -96,6 +108,11 @@ export default function Register() {
                 </div>
                 <div><Label htmlFor="pn">Principal name</Label><Input id="pn" value={form.principal_name} onChange={(e) => setForm({ ...form, principal_name: e.target.value })} data-testid="register-principal" /></div>
                 <div><Label htmlFor="sp">Phone / WhatsApp</Label><Input id="sp" placeholder="+234..." value={form.school_phone} onChange={(e) => setForm({ ...form, school_phone: e.target.value })} data-testid="register-phone" /></div>
+                <div className="sm:col-span-2">
+                  <Label htmlFor="wh">WhatsApp number for activation code *</Label>
+                  <Input id="wh" required placeholder="+234 812 345 6789" value={form.whatsapp_phone} onChange={(e) => setForm({ ...form, whatsapp_phone: e.target.value })} data-testid="register-whatsapp" />
+                  <p className="text-[11px] text-slate-500 mt-1">Corner Streams will WhatsApp a 6-digit activation code to this number after you upload your bank receipt.</p>
+                </div>
                 <div className="sm:col-span-2"><Label htmlFor="sa">Address</Label><Input id="sa" placeholder="Street, City, State" value={form.school_address} onChange={(e) => setForm({ ...form, school_address: e.target.value })} data-testid="register-address" /></div>
                 <div className="sm:col-span-2">
                   <Label>School branding (used on all report documents)</Label>

@@ -49,7 +49,9 @@ async def list_students(class_name: Optional[str] = None, user: dict = Depends(g
     if class_name:
         q["class_name"] = class_name
     if user["role"] == "parent":
-        q["parent_email"] = user["email"]
+        # Case-insensitive match — parent_email on students may have been stored
+        # with different casing/whitespace than the user's login email.
+        q["parent_email"] = {"$regex": f"^{user['email'].strip()}$", "$options": "i"}
     students = await db.students.find(q, {"_id": 0}).to_list(2000)
     # Attach a "has_login" indicator for school_admin/super_admin
     if user["role"] in ("school_admin", "super_admin"):

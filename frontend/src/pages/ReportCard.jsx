@@ -8,6 +8,15 @@ import Logo from "@/components/Logo.jsx";
 import { Printer, Lock, ArrowLeft } from "lucide-react";
 import { Link } from "react-router-dom";
 
+const remarkForGrade = (g) => ({
+  A: "Excellent",
+  B: "Very Good",
+  C: "Good",
+  D: "Fair",
+  E: "Pass",
+  F: "Poor — needs urgent attention",
+}[g] || "—");
+
 export default function ReportCard() {
   const { studentId, term } = useParams();
   const [data, setData] = useState(null);
@@ -40,34 +49,43 @@ export default function ReportCard() {
     );
   }
 
-  const { student, school, scores, skill_ratings, average, promotion_status, qr_code, year, principal_signature } = data;
+  const { student, school, scores, skill_ratings, average, promotion_status, qr_code, year, principal_signature,
+    total_subjects, subjects_scored, principal_comment, teacher_comment } = data;
+  const brand = school?.brand_color || "#002147";
 
   return (
     <div className="min-h-screen bg-slate-100 py-10 print:bg-white print:py-0" data-testid="report-card">
       <div className="max-w-3xl mx-auto px-6 no-print mb-4 flex items-center justify-between">
         <Link to="/dashboard/parent"><Button variant="outline" className="rounded-full"><ArrowLeft size={14} className="mr-2" /> Back</Button></Link>
-        <Button onClick={() => window.print()} className="cs-bg-navy text-white hover:opacity-90 rounded-full" data-testid="print-btn"><Printer size={14} className="mr-2" /> Print / Save PDF</Button>
+        <Button onClick={() => window.print()} style={{ backgroundColor: brand }} className="text-white hover:opacity-90 rounded-full" data-testid="print-btn"><Printer size={14} className="mr-2" /> Print / Save PDF</Button>
       </div>
 
-      <div className="max-w-3xl mx-auto bg-white shadow rounded-lg p-10 print:shadow-none print:rounded-none">
+      <div className="max-w-3xl mx-auto bg-white shadow rounded-lg p-10 print:shadow-none print:rounded-none border-t-8" style={{ borderTopColor: brand }}>
+        {/* Header with school logo top-left in brand color */}
         <div className="flex items-start justify-between border-b pb-6">
           <div className="flex items-center gap-4">
-            <Logo size={50} withText={false} />
+            <div className="h-14 w-14 rounded-lg flex items-center justify-center overflow-hidden border-2" style={{ borderColor: brand, backgroundColor: `${brand}10` }} data-testid="report-school-logo">
+              {school?.logo_url ? (
+                <img src={school.logo_url} alt="logo" className="h-full w-full object-cover" />
+              ) : (
+                <Logo size={36} withText={false} />
+              )}
+            </div>
             <div>
-              <div className="font-display text-2xl font-bold cs-text-navy">{school?.name || "—"}</div>
+              <div className="font-display text-2xl font-bold" style={{ color: brand }}>{school?.name || "—"}</div>
               <div className="text-xs text-slate-500">{school?.address || ""}</div>
-              <div className="text-xs text-slate-500">{school?.phone || ""}</div>
+              <div className="text-xs text-slate-500">{school?.phone || ""}{school?.motto ? ` · ${school.motto}` : ""}</div>
             </div>
           </div>
           <div className="text-right">
-            <div className="eyebrow">DIGITAL REPORT</div>
+            <div className="eyebrow" style={{ color: brand }}>DIGITAL REPORT</div>
             <div className="text-xs text-slate-500 mt-1">{term} · {year}</div>
           </div>
         </div>
 
         {/* Student bio */}
         <div className="mt-6 grid grid-cols-[100px_1fr] gap-5">
-          <div className="aspect-[3/4] bg-slate-100 rounded border flex items-center justify-center overflow-hidden">
+          <div className="aspect-[3/4] bg-slate-100 rounded border-2 flex items-center justify-center overflow-hidden" style={{ borderColor: `${brand}40` }}>
             {student.passport_url ? (
               <img src={student.passport_url} alt="passport" className="w-full h-full object-cover" />
             ) : (
@@ -75,54 +93,69 @@ export default function ReportCard() {
             )}
           </div>
           <div className="grid grid-cols-2 gap-3 text-sm">
-            <div><div className="text-xs text-slate-500">Name</div><div className="font-semibold cs-text-navy">{student.name}</div></div>
-            <div><div className="text-xs text-slate-500">Class</div><div className="font-semibold cs-text-navy">{student.class_name}</div></div>
-            <div><div className="text-xs text-slate-500">Age</div><div className="font-semibold cs-text-navy">{student.age}</div></div>
-            <div><div className="text-xs text-slate-500">Gender</div><div className="font-semibold cs-text-navy">{student.gender}</div></div>
+            <div><div className="text-xs text-slate-500">Name</div><div className="font-semibold" style={{ color: brand }}>{student.name}</div></div>
+            <div><div className="text-xs text-slate-500">Class</div><div className="font-semibold" style={{ color: brand }}>{student.class_name}</div></div>
+            <div><div className="text-xs text-slate-500">Age</div><div className="font-semibold" style={{ color: brand }}>{student.age}</div></div>
+            <div><div className="text-xs text-slate-500">Gender</div><div className="font-semibold" style={{ color: brand }}>{student.gender}</div></div>
+            <div><div className="text-xs text-slate-500">Subjects scored</div><div className="font-semibold" style={{ color: brand }} data-testid="subjects-scored">{subjects_scored} of {total_subjects}</div></div>
+            <div><div className="text-xs text-slate-500">Session</div><div className="font-semibold" style={{ color: brand }}>{year}</div></div>
           </div>
         </div>
 
         {/* Academic table */}
-        <h3 className="mt-8 font-display font-semibold cs-text-navy">Academic performance</h3>
-        <table className="mt-2 w-full text-sm border">
-          <thead className="cs-bg-navy text-white text-xs uppercase">
-            <tr><th className="p-2 text-left">Subject</th><th className="p-2">CA (40)</th><th className="p-2">Exam (60)</th><th className="p-2">Total</th><th className="p-2">Grade</th></tr>
+        <h3 className="mt-8 font-display font-semibold" style={{ color: brand }}>Academic performance</h3>
+        <table className="mt-2 w-full text-sm border-2" style={{ borderColor: brand }}>
+          <thead className="text-white text-xs uppercase" style={{ backgroundColor: brand }}>
+            <tr><th className="p-2 text-left">Subject</th><th className="p-2">CA (40)</th><th className="p-2">Exam (60)</th><th className="p-2">Total</th><th className="p-2">Grade</th><th className="p-2">Remark</th></tr>
           </thead>
           <tbody>
             {scores.map((s) => (
               <tr key={s.id} className="even:bg-slate-50">
-                <td className="p-2">{s.subject}</td>
+                <td className="p-2 font-medium">{s.subject}</td>
                 <td className="p-2 text-center">{s.ca_score}</td>
                 <td className="p-2 text-center">{s.exam_score}</td>
                 <td className="p-2 text-center font-semibold">{s.total}</td>
-                <td className="p-2 text-center cs-text-blue font-bold">{s.grade}</td>
+                <td className="p-2 text-center font-bold" style={{ color: brand }}>{s.grade}</td>
+                <td className="p-2 text-xs text-slate-600">{remarkForGrade(s.grade)}</td>
               </tr>
             ))}
-            {!scores.length && <tr><td className="p-3 text-center text-slate-400" colSpan={5}>No scores recorded for this term yet.</td></tr>}
+            {!scores.length && <tr><td className="p-3 text-center text-slate-400" colSpan={6}>No scores recorded for this term yet.</td></tr>}
           </tbody>
         </table>
 
         <div className="mt-4 grid grid-cols-2 gap-4 text-sm">
-          <div className="cs-card p-3"><div className="text-xs text-slate-500">Average</div><div className="font-display text-xl font-bold cs-text-navy">{average}%</div></div>
-          <div className="cs-card p-3"><div className="text-xs text-slate-500">Promotion status</div><div className={`font-display text-xl font-bold ${promotion_status === "Promoted" ? "cs-text-green" : "text-amber-600"}`}>{promotion_status}</div></div>
+          <div className="p-3 rounded border-2" style={{ borderColor: brand }}><div className="text-xs text-slate-500">Average</div><div className="font-display text-xl font-bold" style={{ color: brand }}>{average}%</div></div>
+          <div className="p-3 rounded border-2" style={{ borderColor: brand }}><div className="text-xs text-slate-500">Promotion status</div><div className={`font-display text-xl font-bold ${promotion_status === "Promoted" ? "cs-text-green" : "text-amber-600"}`}>{promotion_status}</div></div>
         </div>
 
         {/* Skills */}
-        <h3 className="mt-8 font-display font-semibold cs-text-navy">Behavioural & skill ratings</h3>
+        <h3 className="mt-8 font-display font-semibold" style={{ color: brand }}>Behavioural & skill ratings</h3>
         <div className="mt-2 grid grid-cols-2 gap-3">
           {skill_ratings.map((s) => (
-            <div key={s.id} className="flex items-center justify-between border rounded p-3">
-              <div className="text-sm cs-text-navy">{s.skill_name}</div>
+            <div key={s.id} className="flex items-center justify-between border-2 rounded p-3" style={{ borderColor: `${brand}40` }}>
+              <div className="text-sm font-medium" style={{ color: brand }}>{s.skill_name}</div>
               <StarRating value={s.rating} />
             </div>
           ))}
           {!skill_ratings.length && <div className="text-sm text-slate-400 col-span-2">No skill ratings recorded.</div>}
         </div>
 
+        {/* Comments */}
+        <div className="mt-8 grid sm:grid-cols-2 gap-4">
+          <div className="p-4 rounded border-l-4" style={{ borderLeftColor: brand, backgroundColor: `${brand}08` }} data-testid="teacher-comment">
+            <div className="eyebrow" style={{ color: brand }}>CLASS TEACHER'S COMMENT</div>
+            <p className="text-sm text-slate-700 mt-1 italic">"{teacher_comment}"</p>
+          </div>
+          <div className="p-4 rounded border-l-4" style={{ borderLeftColor: brand, backgroundColor: `${brand}08` }} data-testid="principal-comment">
+            <div className="eyebrow" style={{ color: brand }}>PRINCIPAL'S COMMENT</div>
+            <p className="text-sm text-slate-700 mt-1 italic">"{principal_comment}"</p>
+          </div>
+        </div>
+
         {/* Footer: signature + QR */}
-        <div className="mt-10 flex items-end justify-between border-t pt-6">
+        <div className="mt-10 flex items-end justify-between border-t-2 pt-6" style={{ borderTopColor: `${brand}40` }}>
           <div>
-            <div className="font-script text-3xl cs-text-navy">{principal_signature}</div>
+            <div className="font-script text-3xl" style={{ color: brand }}>{principal_signature}</div>
             <div className="text-xs text-slate-500 border-t mt-1 pt-1">Principal's signature</div>
           </div>
           <div className="text-right">

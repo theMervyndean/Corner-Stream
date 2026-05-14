@@ -167,6 +167,7 @@ class PublicBankReceiptIn(BaseModel):
     amount_ngn: float
     file_data_url: str
     note: Optional[str] = ""
+    whatsapp_code: Optional[str] = ""
 
 
 @router.post("/bank-receipt-public")
@@ -186,10 +187,16 @@ async def upload_bank_receipt_public(payload: PublicBankReceiptIn):
         "amount_ngn": payload.amount_ngn,
         "file_data_url": payload.file_data_url,
         "note": payload.note or "",
+        "whatsapp_code": (payload.whatsapp_code or "").strip(),
         "status": "pending",
         "created_at": now_iso(),
     }
     await db.bank_receipts.insert_one(doc)
+    # Mark school as pending_code so super admin can see they're in the queue
+    await db.schools.update_one(
+        {"id": user["school_id"]},
+        {"$set": {"verification_status": "pending_code", "updated_at": now_iso()}},
+    )
     return {"ok": True, "message": "Receipt received. WhatsApp +234 814 188 0550 with your school name to confirm. Super Admin will activate your dashboard within hours."}
 
 

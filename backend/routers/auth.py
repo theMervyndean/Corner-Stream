@@ -21,6 +21,7 @@ class RegisterIn(BaseModel):
     school_address: Optional[str] = None
     brand_color: Optional[str] = Field(default="#002147", pattern=r"^#[0-9a-fA-F]{6}$")
     logo_url: Optional[str] = None
+    whatsapp_phone: Optional[str] = None
 
 
 class LoginIn(BaseModel):
@@ -70,8 +71,10 @@ async def register(payload: RegisterIn, response: Response):
         "brand_color": payload.brand_color or "#002147",
         "founded_year": "",
         "website": "",
+        "whatsapp_phone": (payload.whatsapp_phone or "").strip(),
         "kill_switch": False,
         "verification_status": "pending_payment",
+        "verification_code": None,
         "subscription_tier": None,
         "subscription_duration": None,
         "subscription_expires_at": None,
@@ -99,6 +102,8 @@ async def register(payload: RegisterIn, response: Response):
         "ok": True,
         "pending_verification": True,
         "school_id": school_id,
+        "school_email": email,
+        "school_name": payload.school_name,
         "message": "School registered. To activate your account, transfer the tier amount to the bank account shown on the payment page, upload your receipt, and WhatsApp +234 814 188 0550 with your school name. Super Admin will activate your dashboard once payment is confirmed."
     }
 
