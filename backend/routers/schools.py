@@ -21,6 +21,10 @@ class SchoolUpdate(BaseModel):
     logo_url: Optional[str] = None
     founded_year: Optional[str] = None
     website: Optional[str] = None
+    brand_color: Optional[str] = Field(default=None, pattern=r"^#[0-9a-fA-F]{6}$")
+    ca_max: Optional[int] = Field(default=None, ge=0, le=100)
+    exam_max: Optional[int] = Field(default=None, ge=0, le=100)
+    ca_count: Optional[int] = Field(default=None, ge=1, le=6)
 
 
 @router.get("/me")
@@ -58,6 +62,10 @@ async def update_my_school(payload: SchoolUpdate, user: dict = Depends(require_r
         update["classes"] = cleaned
     if "school_type" in update and update["school_type"] not in SCHOOL_TYPES:
         raise HTTPException(status_code=400, detail="Invalid school_type")
+    # Validate CA + Exam add to 100 when both provided
+    if update.get("ca_max") is not None and update.get("exam_max") is not None:
+        if int(update["ca_max"]) + int(update["exam_max"]) != 100:
+            raise HTTPException(status_code=400, detail="CA + Exam max scores must add to 100")
     update["updated_at"] = now_iso()
     await db.schools.update_one({"id": user["school_id"]}, {"$set": update})
     school = await db.schools.find_one({"id": user["school_id"]}, {"_id": 0})
@@ -116,3 +124,42 @@ async def remove_class(class_name: str, user: dict = Depends(require_roles("scho
         summary=f"Class removed: {class_name}", details={"class_name": class_name},
     )
     return {"classes": classes}
+
+
+
+class ClassRenameIn(BaseModel):
+    new_name: str = Field(min_length=1, max_length=80)
+
+
+@router.put("/me/classes/{old_name}")
+async def rename_class(old_name: str, payload: ClassRenameIn, user: dict = Depends(require_roles("school_admin"))):
+    """Rename a class in the roster. Also renames the class on every student, scores, skills,
+    class_subjects and cbt_exams record that references it."""
+    db = get_db()
+    school = await db.schools.find_one({"id": user["school_id"]}, {"_id": 0})
+    if not school:
+        raise HTTPException(status_code=404, detail="School not found")
+    classes = list(school.get("classes") or [])
+    if old_name not in classes:
+        raise HTTPException(status_code=404, detail="Class not found in roster")
+    new_name = payload.new_name.strip()
+    if not new_name:
+        raise HTTPException(status_code=400, detail="New name required")
+    if new_name == old_name:
+        return {"classes": classes}
+    if new_name in classes:
+        raise HTTPException(status_code=400, detail=f'"{new_name}" already exists')
+    classes = [new_name if c == old_name else c for c in classes]
+    await db.schools.update_one({"id": user["school_id"]}, {"$set": {"classes": classes, "updated_at": now_iso()}})
+    # Cascade rename across collections scoped to this school
+    for col in ("students", "class_subjects", "cbt_exams", "scores", "skill_ratings"):
+        await db[col].update_many(
+            {"school_id": user["school_id"], "class_name": old_name},
+            {"$set": {"class_name": new_name, "updated_at": now_iso()}},
+        )
+    await log_event(
+        school_id=user["school_id"], event_type=EVENT_CLASS_ADDED,
+        actor_id=user.get("id"), actor_name=user.get("name"), actor_role=user.get("role"),
+        summary=f"Class renamed: {old_name} → {new_name}", details={"old_name": old_name, "new_name": new_name},
+    )
+    return {"classes": classes, "old_name": old_name, "new_name": new_name}

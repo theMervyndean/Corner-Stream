@@ -23,6 +23,7 @@ import { ChartCard, BarSimple, DonutChart, GrowthArea } from "@/components/Chart
 import BulkUploadDialog from "@/components/BulkUploadDialog.jsx";
 import CredentialsModal from "@/components/CredentialsModal.jsx";
 import StudentProfileDialog from "@/components/StudentProfileDialog.jsx";
+import LockedOverlay from "@/components/LockedOverlay.jsx";
 
 const PRICING = {
   cbt_essentials: { name: "CBT Essentials", "1_term": 40000, "2_terms": 70000, "full_session": 110000 },
@@ -58,7 +59,9 @@ export default function SchoolAdminDashboard() {
   const [loginForm, setLoginForm] = useState({ email: "", password: "" });
 
   // Profile
-  const [profileForm, setProfileForm] = useState({ name: "", principal_name: "", address: "", phone: "", email: "", motto: "", logo_url: "", founded_year: "", website: "" });
+  const [profileForm, setProfileForm] = useState({ name: "", principal_name: "", address: "", phone: "", email: "", motto: "", logo_url: "", founded_year: "", website: "", brand_color: "#002147", ca_max: 40, exam_max: 60, ca_count: 1 });
+  // Class rename
+  const [renamingClass, setRenamingClass] = useState(null); // {old: "JSS 1", new: "JSS 1A"}
   // Analytics
   const [analytics, setAnalytics] = useState(null);
 
@@ -122,11 +125,40 @@ export default function SchoolAdminDashboard() {
     const name = newClassName.trim();
     if (!name) { toast.error("Enter a class name"); return; }
     try {
-      await api.post("/schools/me/classes", { class_name: name });
+      const { data } = await api.post("/schools/me/classes", { class_name: name });
       toast.success(`Added "${name}"`);
       setNewClassName("");
+      // Optimistic update so UI shows the new class instantly
+      if (data?.classes) setSchool((s) => s ? { ...s, classes: data.classes } : s);
       refresh();
     } catch (e) { toast.error(formatApiError(e.response?.data?.detail) || e.message); }
+  };
+  const renameClass = async (oldName, newName) => {
+    const n = (newName || "").trim();
+    if (!n) { toast.error("New name required"); return; }
+    if (n === oldName) { setRenamingClass(null); return; }
+    try {
+      const { data } = await api.put(`/schools/me/classes/${encodeURIComponent(oldName)}`, { new_name: n });
+      toast.success(`Renamed "${oldName}" → "${n}"`);
+      if (data?.classes) setSchool((s) => s ? { ...s, classes: data.classes } : s);
+      setRenamingClass(null);
+      refresh();
+    } catch (e) { toast.error(formatApiError(e.response?.data?.detail) || e.message); }
+  };
+  const downloadClassTemplate = async (className) => {
+    try {
+      const res = await api.get(`/students/template/${encodeURIComponent(className)}`, { responseType: "blob" });
+      const blob = new Blob([res.data], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${className.replace(/\s+/g, "_")}_students.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+      toast.success(`Template for ${className} downloaded`);
+    } catch (e) { toast.error("Could not download template"); }
   };
   const removeClassName = async (name) => {
     if (!window.confirm(`Remove "${name}" from your class roster?`)) return;
@@ -159,6 +191,8 @@ export default function SchoolAdminDashboard() {
         name: s.name || "", principal_name: s.principal_name || "", address: s.address || "",
         phone: s.phone || "", email: s.email || "", motto: s.motto || "",
         logo_url: s.logo_url || "", founded_year: s.founded_year || "", website: s.website || "",
+        brand_color: s.brand_color || "#002147",
+        ca_max: s.ca_max ?? 40, exam_max: s.exam_max ?? 60, ca_count: s.ca_count ?? 1,
       });
     } catch (e) {
       toast.error(formatApiError(e.response?.data?.detail) || e.message);
@@ -410,9 +444,12 @@ export default function SchoolAdminDashboard() {
 
   if (!user || !school) return <div className="min-h-screen"><Navbar variant="dashboard" /><div className="p-10 text-slate-500">Loading…</div></div>;
 
+  const locked = school.verification_status && school.verification_status !== "active";
+
   return (
     <div className="min-h-screen">
       <Navbar variant="dashboard" />
+      {locked && <LockedOverlay school={school} onUnlocked={refresh} />}
       <div className="max-w-7xl mx-auto px-6 py-8" data-testid="school-admin-dashboard">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
@@ -596,6 +633,39 @@ export default function SchoolAdminDashboard() {
                   <div className="sm:col-span-2"><Label>Website</Label><Input value={profileForm.website} onChange={(e) => setProfileForm({ ...profileForm, website: e.target.value })} placeholder="https://..." data-testid="profile-website" /></div>
                 </div>
               </div>
+
+              {/* Brand color + score model — appears on every report card */}
+              <div className="mt-8 pt-6 border-t">
+                <div className="eyebrow cs-text-navy">REPORT CARD SETTINGS</div>
+                <p className="text-xs text-slate-500 mt-1">These values control how scores are entered and printed on every student's report.</p>
+                <div className="mt-3 grid sm:grid-cols-2 gap-4">
+                  <div>
+                    <Label>Brand color</Label>
+                    <div className="mt-1 flex items-center gap-2">
+                      <input type="color" value={profileForm.brand_color} onChange={(e) => setProfileForm({ ...profileForm, brand_color: e.target.value })} className="h-10 w-12 rounded-md border border-slate-200 cursor-pointer" data-testid="profile-brand-color" />
+                      <Input value={profileForm.brand_color} onChange={(e) => setProfileForm({ ...profileForm, brand_color: e.target.value })} className="font-mono" data-testid="profile-brand-color-hex" />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    <div>
+                      <Label>CA max</Label>
+                      <Input type="number" min={0} max={100} value={profileForm.ca_max} onChange={(e) => setProfileForm({ ...profileForm, ca_max: Number(e.target.value) })} data-testid="profile-ca-max" />
+                    </div>
+                    <div>
+                      <Label>Exam max</Label>
+                      <Input type="number" min={0} max={100} value={profileForm.exam_max} onChange={(e) => setProfileForm({ ...profileForm, exam_max: Number(e.target.value) })} data-testid="profile-exam-max" />
+                    </div>
+                    <div>
+                      <Label>CAs</Label>
+                      <Input type="number" min={1} max={6} value={profileForm.ca_count} onChange={(e) => setProfileForm({ ...profileForm, ca_count: Number(e.target.value) })} data-testid="profile-ca-count" />
+                    </div>
+                  </div>
+                </div>
+                <p className="text-[11px] text-slate-500 mt-2">
+                  CA + Exam must total 100. Default is 40 + 60 (1 CA column). WAEC-style schools typically use 20 + 80 (4 CAs of 5 each).
+                </p>
+              </div>
+
               <div className="mt-6 flex justify-end">
                 <Button onClick={saveProfile} className="cs-bg-green text-white hover:opacity-90 rounded-full btn-anim" data-testid="profile-save">Save profile</Button>
               </div>
@@ -636,27 +706,55 @@ export default function SchoolAdminDashboard() {
               <div className="mt-6 grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 {classes.map((cn) => {
                   const studentCount = students.filter((s) => s.class_name === cn).length;
+                  const isRenaming = renamingClass && renamingClass.old === cn;
                   return (
-                    <div key={cn} className="flex items-center justify-between p-3 rounded-lg border bg-white" data-testid={`class-row-${cn}`}>
-                      <div className="flex items-center gap-3 min-w-0">
+                    <div key={cn} className="flex items-center justify-between gap-2 p-3 rounded-lg border bg-white" data-testid={`class-row-${cn}`}>
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
                         <div className="w-9 h-9 rounded-md cs-bg-navy text-white flex items-center justify-center flex-shrink-0">
                           <GraduationCap size={16} />
                         </div>
-                        <div className="min-w-0">
-                          <div className="font-semibold cs-text-navy truncate">{cn}</div>
+                        <div className="min-w-0 flex-1">
+                          {isRenaming ? (
+                            <Input
+                              autoFocus
+                              defaultValue={cn}
+                              onBlur={(e) => renameClass(cn, e.target.value)}
+                              onKeyDown={(e) => { if (e.key === "Enter") renameClass(cn, e.target.value); if (e.key === "Escape") setRenamingClass(null); }}
+                              className="h-7 text-sm"
+                              data-testid={`class-rename-input-${cn}`}
+                            />
+                          ) : (
+                            <div className="font-semibold cs-text-navy truncate cursor-pointer hover:underline" onClick={() => setRenamingClass({ old: cn, new: cn })} title="Click to rename" data-testid={`class-name-${cn}`}>{cn}</div>
+                          )}
                           <div className="text-[11px] text-slate-500">{studentCount} student{studentCount !== 1 ? "s" : ""}</div>
                         </div>
                       </div>
-                      <Button
-                        size="sm"
-                        variant="destructive"
-                        onClick={() => removeClassName(cn)}
-                        data-testid={`class-del-${cn}`}
-                        disabled={studentCount > 0}
-                        title={studentCount > 0 ? "Cannot remove — students assigned" : "Remove class"}
-                      >
-                        <Trash2 size={12} />
-                      </Button>
+                      <div className="flex items-center gap-1 flex-shrink-0">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => downloadClassTemplate(cn)}
+                          title="Download Excel template for this class"
+                          data-testid={`class-template-${cn}`}
+                        ><FileSpreadsheet size={12} /></Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setRenamingClass({ old: cn, new: cn })}
+                          title="Rename class"
+                          data-testid={`class-rename-${cn}`}
+                        ><UserCog size={12} /></Button>
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          onClick={() => removeClassName(cn)}
+                          data-testid={`class-del-${cn}`}
+                          disabled={studentCount > 0}
+                          title={studentCount > 0 ? "Cannot remove — students assigned" : "Remove class"}
+                        >
+                          <Trash2 size={12} />
+                        </Button>
+                      </div>
                     </div>
                   );
                 })}

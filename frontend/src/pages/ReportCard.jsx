@@ -52,6 +52,8 @@ export default function ReportCard() {
   const { student, school, scores, skill_ratings, average, promotion_status, qr_code, year, principal_signature,
     total_subjects, subjects_scored, principal_comment, teacher_comment } = data;
   const brand = school?.brand_color || "#002147";
+  const caMax = school?.ca_max ?? 40;
+  const examMax = school?.exam_max ?? 60;
 
   return (
     <div className="min-h-screen bg-slate-100 py-10 print:bg-white print:py-0" data-testid="report-card">
@@ -106,7 +108,7 @@ export default function ReportCard() {
         <h3 className="mt-8 font-display font-semibold" style={{ color: brand }}>Academic performance</h3>
         <table className="mt-2 w-full text-sm border-2" style={{ borderColor: brand }}>
           <thead className="text-white text-xs uppercase" style={{ backgroundColor: brand }}>
-            <tr><th className="p-2 text-left">Subject</th><th className="p-2">CA (40)</th><th className="p-2">Exam (60)</th><th className="p-2">Total</th><th className="p-2">Grade</th><th className="p-2">Remark</th></tr>
+            <tr><th className="p-2 text-left">Subject</th><th className="p-2">CA ({caMax})</th><th className="p-2">Exam ({examMax})</th><th className="p-2">Total</th><th className="p-2">Grade</th><th className="p-2">Remark</th></tr>
           </thead>
           <tbody>
             {scores.map((s) => (

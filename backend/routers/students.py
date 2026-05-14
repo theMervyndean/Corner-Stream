@@ -1,9 +1,11 @@
 """Students router — CRUD + Excel bulk upload + student login provisioning."""
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, EmailStr, Field
 from typing import Optional, List
 from io import BytesIO
 import openpyxl
+from openpyxl.styles import Font, PatternFill, Alignment
 from db import get_db, hash_password, new_id, now_iso
 from auth_utils import get_current_user, require_roles
 from audit_log import log_event, EVENT_BULK_STUDENTS, EVENT_STUDENT_ADDED
@@ -253,3 +255,84 @@ async def upload_passport(student_id: str, payload: PassportIn, user: dict = Dep
     if res.matched_count == 0:
         raise HTTPException(status_code=404, detail="Student not found")
     return {"ok": True}
+
+
+@router.get("/template/{class_name}")
+async def download_class_template(class_name: str, user: dict = Depends(require_roles("school_admin"))):
+    """Download an .xlsx template pre-populated with headers + existing students in this class.
+    School admin fills in details (or adds new rows) and re-uploads via /students/bulk-upload."""
+    db = get_db()
+    school = await db.schools.find_one({"id": user["school_id"]}, {"_id": 0})
+    if not school:
+        raise HTTPException(status_code=404, detail="School not found")
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = f"{class_name[:25]} students"
+
+    headers = ["name", "age", "gender", "class_name", "parent_name", "parent_email", "parent_phone", "balance_due"]
+    ws.append(headers)
+    header_fill = PatternFill(start_color="002147", end_color="002147", fill_type="solid")
+    header_font = Font(color="FFFFFF", bold=True, size=11)
+    for cell in ws[1]:
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+
+    # Pre-populate existing students in this class so the admin can edit-in-place
+    existing = await db.students.find(
+        {"school_id": user["school_id"], "class_name": class_name}, {"_id": 0},
+    ).to_list(500)
+    for s in existing:
+        ws.append([
+            s.get("name", ""),
+            s.get("age", ""),
+            s.get("gender", ""),
+            class_name,
+            s.get("parent_name", ""),
+            s.get("parent_email", "") or "",
+            s.get("parent_phone", ""),
+            s.get("balance_due", 0),
+        ])
+
+    # Two example rows if class is empty
+    if not existing:
+        ws.append(["Adaeze Okafor", 12, "Female", class_name, "Mr. Tunde Okafor", "parent@example.com", "+2348012345678", 0])
+        ws.append(["Emeka Nwosu", 13, "Male", class_name, "Mrs. Nwosu", "", "", 25000])
+
+    # Column widths for readability
+    widths = [22, 6, 8, 14, 22, 28, 18, 12]
+    for i, w in enumerate(widths, 1):
+        ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
+
+    # Add a help sheet
+    ws2 = wb.create_sheet("How to fill")
+    ws2.append(["Column", "Required?", "Notes"])
+    ws2["A1"].font = Font(bold=True)
+    ws2["B1"].font = Font(bold=True)
+    ws2["C1"].font = Font(bold=True)
+    rows = [
+        ["name", "Yes", "Full name as it should appear on the report card."],
+        ["age", "Yes", "Whole number."],
+        ["gender", "Yes", "Male / Female."],
+        ["class_name", "Yes", "Leave as is — pre-filled to this class."],
+        ["parent_name", "No", "Full name of guardian (optional)."],
+        ["parent_email", "No", "Required if you want parent portal access."],
+        ["parent_phone", "No", "Nigeria format e.g. +2348012345678 (optional)."],
+        ["balance_due", "No", "Outstanding fee in NGN. Use 0 if fully paid."],
+    ]
+    for r in rows:
+        ws2.append(r)
+    for col in ("A", "B", "C"):
+        ws2.column_dimensions[col].width = 24
+
+    buf = BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    safe_name = "".join(c for c in class_name if c.isalnum() or c in (" ", "-", "_")).strip().replace(" ", "_")
+    filename = f"{(school.get('name') or 'school')}_{safe_name}_students.xlsx".replace(" ", "_")
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
