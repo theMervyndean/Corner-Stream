@@ -219,13 +219,32 @@ async def seed_demo_data():
                 "created_at": now_iso(),
             })
 
-    # Subjects per class
-    if not await db.class_subjects.find_one({"school_id": demo_school_id, "class_name": "JSS 1"}):
-        await db.class_subjects.insert_one({
-            "school_id": demo_school_id, "class_name": "JSS 1",
-            "subjects": ["Mathematics", "English Language", "Basic Science", "Social Studies", "Civic Education", "Computer Studies"],
-            "created_at": now_iso(),
-        })
+    # Subjects per class — seed full subject lists for every JSS/SSS class so schools
+    # have a working baseline. (Digital Reports plan needs this.)
+    JSS_SUBJECTS = [
+        "Mathematics", "English Language", "Basic Science", "Basic Technology",
+        "Social Studies", "Civic Education", "Computer Studies / ICT",
+        "Agricultural Science", "Home Economics", "Physical & Health Education",
+        "Christian Religious Studies", "Cultural & Creative Arts",
+        "Business Studies", "French", "Yoruba",
+    ]
+    SS_SUBJECTS = [
+        "Mathematics", "English Language", "Civic Education", "Biology",
+        "Physics", "Chemistry", "Further Mathematics", "Economics",
+        "Government", "Literature in English", "Geography",
+        "Christian Religious Studies", "Agricultural Science",
+        "Commerce", "Financial Accounting",
+    ]
+    subject_seed = {
+        "JSS 1": JSS_SUBJECTS, "JSS 2": JSS_SUBJECTS, "JSS 3": JSS_SUBJECTS,
+        "SS 1": SS_SUBJECTS, "SS 2": SS_SUBJECTS, "SS 3": SS_SUBJECTS,
+    }
+    for cls, subs in subject_seed.items():
+        if not await db.class_subjects.find_one({"school_id": demo_school_id, "class_name": cls}):
+            await db.class_subjects.insert_one({
+                "school_id": demo_school_id, "class_name": cls,
+                "subjects": subs, "created_at": now_iso(),
+            })
 
     # Demo scores + skills for Adaeze (1st Term)
     adaeze = await db.students.find_one({"school_id": demo_school_id, "name": "Adaeze Okafor"})

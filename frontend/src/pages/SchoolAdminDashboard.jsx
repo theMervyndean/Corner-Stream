@@ -24,6 +24,7 @@ import BulkUploadDialog from "@/components/BulkUploadDialog.jsx";
 import CredentialsModal from "@/components/CredentialsModal.jsx";
 import StudentProfileDialog from "@/components/StudentProfileDialog.jsx";
 import LockedOverlay from "@/components/LockedOverlay.jsx";
+import DigitalReportsDashboard from "@/pages/DigitalReportsDashboard.jsx";
 
 const PRICING = {
   cbt_essentials: { name: "CBT Essentials", "1_term": 40000, "2_terms": 70000, "full_session": 110000 },
@@ -443,6 +444,11 @@ export default function SchoolAdminDashboard() {
   const totalDebt = useMemo(() => students.reduce((a, s) => a + (s.balance_due || 0), 0), [students]);
 
   if (!user || !school) return <div className="min-h-screen"><Navbar variant="dashboard" /><div className="p-10 text-slate-500">Loading…</div></div>;
+
+  // Plan-specific dashboard: Digital Reports tier gets its own sidebar-based experience.
+  if (school.subscription_tier === "digital_reports") {
+    return <DigitalReportsDashboard school={school} refreshOuter={refresh} />;
+  }
 
   const locked = school.verification_status && school.verification_status !== "active";
 

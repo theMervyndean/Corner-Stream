@@ -19,6 +19,7 @@ import SuperAdmin from "@/pages/SuperAdmin.jsx";
 import ReportCard from "@/pages/ReportCard.jsx";
 import CheckoutReturn from "@/pages/CheckoutReturn.jsx";
 import PendingVerification from "@/pages/PendingVerification.jsx";
+import HalfTermReport from "@/pages/HalfTermReport.jsx";
 import InstallPrompt from "@/components/InstallPrompt.jsx";
 
 import "@/App.css";
@@ -64,6 +65,7 @@ function AnimatedRoutes() {
         <Route path="/cbt/review/:attemptId" element={<ProtectedRoute><CBTReview /></ProtectedRoute>} />
         <Route path="/welcome-pack" element={<ProtectedRoute roles={["school_admin"]}><WelcomePack /></ProtectedRoute>} />
         <Route path="/report/:studentId/:term" element={<ProtectedRoute><ReportCard /></ProtectedRoute>} />
+        <Route path="/report/half/:studentId/:term" element={<ProtectedRoute><HalfTermReport /></ProtectedRoute>} />
         <Route path="/report/annual/:studentId" element={<ProtectedRoute><AnnualReport /></ProtectedRoute>} />
         <Route path="/admin" element={<Navigate to="/login?admin=1" replace />} />
         <Route path="/checkout/return" element={<ProtectedRoute><CheckoutReturn /></ProtectedRoute>} />
