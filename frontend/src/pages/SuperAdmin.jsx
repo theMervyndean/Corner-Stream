@@ -4,7 +4,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { api, formatApiError } from "@/lib/api";
@@ -12,27 +11,47 @@ import { toast } from "sonner";
 import {
   Building2, Users, GraduationCap, Inbox, AlertTriangle, ShieldCheck,
   Receipt, BarChart3, UserPlus, KeyRound, Eye, Menu, X, ChevronRight,
-  Calendar, Pause, Play, Award, Wallet, BookOpen, Layers, Settings2,
+  Calendar, Award, Wallet, BookOpen, Layers, Settings2, Search, FilterX,
 } from "lucide-react";
 import { ChartCard, GrowthArea, DonutChart, BarSimple } from "@/components/Charts.jsx";
 
 const NAV = [
-  { key: "schools",     label: "Schools",             icon: Building2 },
-  { key: "users",       label: "Users",               icon: Users },
-  { key: "students",    label: "Students",            icon: GraduationCap },
-  { key: "leads",       label: "Leads",               icon: Inbox },
-  { key: "open_leads",  label: "Open Leads",          icon: AlertTriangle },
-  { key: "awaiting",    label: "Awaiting Activation", icon: ShieldCheck },
-  { key: "receipts",    label: "Bank Receipts",       icon: Receipt },
-  { key: "analytics",   label: "Analytics",           icon: BarChart3 },
-  { key: "add_super",   label: "Add Super Admin",     icon: UserPlus },
+  { key: "schools",    label: "Schools",             icon: Building2 },
+  { key: "users",      label: "Users",               icon: Users },
+  { key: "students",   label: "Students",            icon: GraduationCap },
+  { key: "leads",      label: "Leads",               icon: Inbox },
+  { key: "open_leads", label: "Open Leads",          icon: AlertTriangle },
+  { key: "awaiting",   label: "Awaiting Activation", icon: ShieldCheck },
+  { key: "receipts",   label: "Bank Receipts",       icon: Receipt },
+  { key: "analytics",  label: "Analytics",           icon: BarChart3 },
+  { key: "add_super",  label: "Add Super Admin",     icon: UserPlus },
 ];
+
+const TIER_META = [
+  { key: "cbt_essentials",     label: "CBT Exams",          icon: BookOpen, color: "#0056B3" },
+  { key: "financial_ledger",   label: "Financial Reports",  icon: Wallet,   color: "#28A745" },
+  { key: "digital_reports",    label: "Digital Results",    icon: Award,    color: "#002147" },
+  { key: "unified_enterprise", label: "Unified Enterprise", icon: Layers,   color: "#7c3aed" },
+];
+
+// helper: school initials for logo placeholder
+const initialsOf = (name) => (name || "?").split(" ").filter(Boolean).slice(0, 2).map((s) => s[0]?.toUpperCase()).join("");
+// helper: date in ISO yyyy-mm-dd
+const ymd = (s) => (s ? new Date(s).toISOString().slice(0, 10) : "");
+// helper: date range match
+const inRange = (iso, from, to) => {
+  if (!iso) return !(from || to);
+  const d = ymd(iso);
+  if (from && d < from) return false;
+  if (to && d > to) return false;
+  return true;
+};
 
 export default function SuperAdmin() {
   const [tab, setTab] = useState("schools");
   const [drawerOpen, setDrawerOpen] = useState(false);
 
-  // State buckets
+  // Data buckets
   const [stats, setStats] = useState(null);
   const [schools, setSchools] = useState([]);
   const [usersAll, setUsersAll] = useState([]);
@@ -49,6 +68,24 @@ export default function SuperAdmin() {
   const [generatedCode, setGeneratedCode] = useState(null);
   const [newSuper, setNewSuper] = useState({ email: "", name: "", password: "" });
 
+  // Schools-pane controls
+  const [tierFilter, setTierFilter] = useState("all");
+  const [schoolSearch, setSchoolSearch] = useState("");
+  const [schoolFrom, setSchoolFrom] = useState("");
+  const [schoolTo, setSchoolTo] = useState("");
+  const [tierPickerForId, setTierPickerForId] = useState(null);
+
+  // Users-pane controls
+  const [userSearch, setUserSearch] = useState("");
+  const [userFrom, setUserFrom] = useState("");
+  const [userTo, setUserTo] = useState("");
+
+  // Receipts-pane controls
+  const [receiptSearch, setReceiptSearch] = useState("");
+  const [receiptFrom, setReceiptFrom] = useState("");
+  const [receiptTo, setReceiptTo] = useState("");
+
+  // ---- fetch ----
   const refresh = async () => {
     try {
       const [s, sc, u, st, l, r, an, vq] = await Promise.all([
@@ -69,20 +106,20 @@ export default function SuperAdmin() {
       setReceipts(r.data.receipts || []);
       setAnalytics(an.data);
       setVerifQueue(vq.data.items || []);
-    } catch (e) {
-      toast.error(formatApiError(e.response?.data?.detail) || e.message);
-    }
+    } catch (e) { toast.error(formatApiError(e.response?.data?.detail) || e.message); }
   };
   useEffect(() => { refresh(); }, []);
 
-  // ---- handlers (preserved from prior version) ----
+  // ---- handlers ----
   const toggleKill = async (id, current) => {
-    try { await api.post(`/superadmin/schools/${id}/kill-switch`, { kill_switch: !current });
+    try {
+      await api.post(`/superadmin/schools/${id}/kill-switch`, { kill_switch: !current });
       toast.success(`Kill-switch ${!current ? "ENGAGED" : "released"}`); refresh();
     } catch (e) { toast.error(formatApiError(e.response?.data?.detail) || e.message); }
   };
   const submitOverride = async () => {
-    try { await api.post("/superadmin/password-override", override);
+    try {
+      await api.post("/superadmin/password-override", override);
       toast.success("Password updated"); setOverrideOpen(false); setOverride({ user_email: "", new_password: "" });
     } catch (e) { toast.error(formatApiError(e.response?.data?.detail) || e.message); }
   };
@@ -91,7 +128,8 @@ export default function SuperAdmin() {
     catch (e) { toast.error(formatApiError(e.response?.data?.detail) || e.message); }
   };
   const decideReceipt = async (id, decision) => {
-    try { await api.post(`/payments/bank-receipts/${id}/decision`, { decision });
+    try {
+      await api.post(`/payments/bank-receipts/${id}/decision`, { decision });
       toast.success(decision === "approve" ? "Receipt approved & subscription activated" : "Receipt rejected"); refresh();
     } catch (e) { toast.error(formatApiError(e.response?.data?.detail) || e.message); }
   };
@@ -100,419 +138,111 @@ export default function SuperAdmin() {
     catch (e) { toast.error(formatApiError(e.response?.data?.detail) || e.message); }
   };
   const generateCode = async (schoolId, schoolName, whatsapp) => {
-    try { const { data } = await api.post(`/superadmin/schools/${schoolId}/whatsapp-code`);
-      setGeneratedCode({ code: data.code, school_name: schoolName, whatsapp_phone: whatsapp || data.whatsapp_phone }); refresh();
+    try {
+      const { data } = await api.post(`/superadmin/schools/${schoolId}/whatsapp-code`);
+      setGeneratedCode({ code: data.code, school_name: schoolName, whatsapp_phone: whatsapp || data.whatsapp_phone });
+      refresh();
     } catch (e) { toast.error(formatApiError(e.response?.data?.detail) || e.message); }
   };
   const verifyDecision = async (schoolId, decision) => {
-    try { await api.post(`/superadmin/schools/${schoolId}/verify`, { decision });
+    try {
+      await api.post(`/superadmin/schools/${schoolId}/verify`, { decision });
       toast.success(decision === "approve" ? "School activated. Dashboard unlocked." : "School marked rejected."); refresh();
+    } catch (e) { toast.error(formatApiError(e.response?.data?.detail) || e.message); }
+  };
+  const updateTier = async (schoolId, tier) => {
+    if (!window.confirm(`Switch to ${tier.replace(/_/g, " ")}? Subscription expiry resets.`)) return;
+    try {
+      await api.patch(`/superadmin/schools/${schoolId}/tier`, { tier, duration: "full_session" });
+      toast.success(`Tier updated → ${tier.replace(/_/g, " ")}`); refresh();
+    } catch (e) { toast.error(formatApiError(e.response?.data?.detail) || e.message); }
+  };
+  const cancelSubscription = async (schoolId, schoolName) => {
+    if (!window.confirm(`Cancel subscription for ${schoolName}? This pauses + rejects the school.`)) return;
+    try {
+      await api.post(`/superadmin/schools/${schoolId}/kill-switch`, { kill_switch: true });
+      await api.post(`/superadmin/schools/${schoolId}/verify`, { decision: "reject", note: "Cancelled by Super Admin" });
+      toast.success("Subscription cancelled"); refresh();
     } catch (e) { toast.error(formatApiError(e.response?.data?.detail) || e.message); }
   };
   const addSuperAdmin = async () => {
     if (!newSuper.email || !newSuper.password || !newSuper.name) { toast.error("Email, name and password required"); return; }
-    try { await api.post("/superadmin/add-super-admin", newSuper);
-      toast.success(`Super admin ${newSuper.email} created`); setNewSuper({ email: "", name: "", password: "" }); refresh();
+    try {
+      await api.post("/superadmin/add-super-admin", newSuper);
+      toast.success(`Super admin ${newSuper.email} created`);
+      setNewSuper({ email: "", name: "", password: "" }); refresh();
     } catch (e) { toast.error(formatApiError(e.response?.data?.detail) || e.message); }
   };
 
-  const updateTier = async (schoolId, tier) => {
-    if (!window.confirm(`Switch this school to ${tier.replace(/_/g, " ")}? Subscription expiry resets to today + full session.`)) return;
-    try {
-      await api.patch(`/superadmin/schools/${schoolId}/tier`, { tier, duration: "full_session" });
-      toast.success(`Tier updated → ${tier.replace(/_/g, " ")}`);
-      refresh();
-    } catch (e) { toast.error(formatApiError(e.response?.data?.detail) || e.message); }
-  };
-  const cancelSubscription = async (schoolId, schoolName) => {
-    if (!window.confirm(`Cancel subscription for ${schoolName}? This pauses the dashboard AND marks the school as rejected. Use with care.`)) return;
-    try {
-      await api.post(`/superadmin/schools/${schoolId}/kill-switch`, { kill_switch: true });
-      await api.post(`/superadmin/schools/${schoolId}/verify`, { decision: "reject", note: "Subscription cancelled by Super Admin" });
-      toast.success("Subscription cancelled");
-      refresh();
-    } catch (e) { toast.error(formatApiError(e.response?.data?.detail) || e.message); }
-  };
-
-  // ---- derived counts ----
+  // ---- derivations ----
   const openLeads = useMemo(() => leads.filter((l) => !l.resolved), [leads]);
-  const badge = (key) => {
-    if (key === "open_leads") return openLeads.length;
-    if (key === "awaiting") return verifQueue.length;
-    return 0;
-  };
+  const badge = (key) => key === "open_leads" ? openLeads.length : key === "awaiting" ? verifQueue.length : 0;
 
-  const pickPane = (k) => { setTab(k); setDrawerOpen(false); };
+  // Per-school student count + staff count (staff = school_admin + teacher)
+  const studentsBySchool = useMemo(() => {
+    const m = {};
+    studentsAll.forEach((s) => { m[s.school_id] = (m[s.school_id] || 0) + 1; });
+    return m;
+  }, [studentsAll]);
+  const staffBySchool = useMemo(() => {
+    const m = {};
+    usersAll.forEach((u) => {
+      if (["school_admin", "teacher"].includes(u.role) && u.school_id) m[u.school_id] = (m[u.school_id] || 0) + 1;
+    });
+    return m;
+  }, [usersAll]);
 
-  // ---- panes ----
-  const KpiRow = () => stats && (
-    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
-      {[
-        { i: Building2, l: "Schools", v: stats.schools },
-        { i: Users, l: "Users", v: stats.users },
-        { i: GraduationCap, l: "Students", v: stats.students },
-        { i: Inbox, l: "Leads", v: stats.leads },
-        { i: AlertTriangle, l: "Open leads", v: stats.open_leads },
-        { i: ShieldCheck, l: "Awaiting", v: stats.pending_schools ?? 0 },
-      ].map((s, i) => {
-        const Icon = s.i;
-        return (
-          <div key={i} className="cs-card p-3 flex items-center gap-3" data-testid={`super-stat-${i}`}>
-            <div className="w-9 h-9 rounded-md cs-bg-navy text-white flex items-center justify-center"><Icon size={16} /></div>
-            <div className="min-w-0">
-              <div className="text-[10px] uppercase tracking-wider text-slate-500 truncate">{s.l}</div>
-              <div className="font-display text-xl font-bold cs-text-navy">{s.v}</div>
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
+  // Filtered lists
+  const filteredSchools = useMemo(() => {
+    const q = schoolSearch.trim().toLowerCase();
+    return schools.filter((s) => {
+      if (tierFilter !== "all" && s.subscription_tier !== tierFilter) return false;
+      if (q && !(s.name || "").toLowerCase().includes(q)) return false;
+      if ((schoolFrom || schoolTo) && !inRange(s.created_at, schoolFrom, schoolTo)) return false;
+      return true;
+    });
+  }, [schools, tierFilter, schoolSearch, schoolFrom, schoolTo]);
 
-  // Schools pane: tier filter + responsive card grid
-  const TIER_META = [
-    { key: "cbt_essentials",     label: "CBT Exams",          icon: BookOpen,  color: "#0056B3" },
-    { key: "financial_ledger",   label: "Financial Reports",  icon: Wallet,    color: "#28A745" },
-    { key: "digital_reports",    label: "Digital Results",    icon: Award,     color: "#002147" },
-    { key: "unified_enterprise", label: "Unified Enterprise", icon: Layers,    color: "#7c3aed" },
-  ];
-  const [tierFilter, setTierFilter] = useState("all");
+  const filteredUsers = useMemo(() => {
+    const q = userSearch.trim().toLowerCase();
+    return usersAll.filter((u) => {
+      const blob = `${u.email || ""} ${u.name || ""} ${u.role || ""} ${u.school_name || ""}`.toLowerCase();
+      if (q && !blob.includes(q)) return false;
+      if ((userFrom || userTo) && !inRange(u.created_at, userFrom, userTo)) return false;
+      return true;
+    });
+  }, [usersAll, userSearch, userFrom, userTo]);
 
-  const SchoolsPane = () => {
-    const counts = useMemo(() => {
-      const c = { all: schools.length };
-      TIER_META.forEach((t) => { c[t.key] = schools.filter((s) => s.subscription_tier === t.key).length; });
-      return c;
-    }, []);
-    const filtered = tierFilter === "all" ? schools : schools.filter((s) => s.subscription_tier === tierFilter);
-
-    const SchoolCard = ({ s }) => {
-      const tierMeta = TIER_META.find((t) => t.key === s.subscription_tier);
-      const active = s.verification_status === "active" && !s.kill_switch;
-      const expires = s.subscription_expires_at ? new Date(s.subscription_expires_at) : null;
-      const daysLeft = expires ? Math.ceil((expires - new Date()) / (1000 * 60 * 60 * 24)) : null;
-      const expColor = daysLeft == null ? "text-slate-400"
-        : daysLeft < 0 ? "text-red-600"
-        : daysLeft <= 14 ? "text-red-600"
-        : daysLeft <= 30 ? "text-amber-600"
-        : "text-slate-600";
-      const TierIcon = tierMeta?.icon || Building2;
-      const [tierOpen, setTierOpen] = useState(false);
-      return (
-        <div className="cs-card p-5 flex flex-col gap-3 border-t-4" style={{ borderTopColor: tierMeta?.color || "#64748b" }} data-testid={`school-card-${s.id}`}>
-          <div className="flex items-start justify-between gap-2">
-            <div className="min-w-0 flex-1">
-              <div className="font-display font-bold cs-text-navy text-base truncate" title={s.name}>{s.name}</div>
-              <div className="text-[11px] text-slate-500 capitalize">{s.school_type || "—"} · Registered {(s.created_at || "").slice(0, 10)}</div>
-            </div>
-            <Badge className={active ? "cs-bg-green text-white" : s.kill_switch ? "bg-red-500 text-white" : "bg-amber-500 text-white"} data-testid={`school-status-${s.id}`}>
-              {active ? "Active" : s.kill_switch ? "Paused" : s.verification_status || "Pending"}
-            </Badge>
-          </div>
-
-          <div className="grid grid-cols-2 gap-2 text-xs">
-            <div className="rounded-md p-2 flex items-center gap-2" style={{ backgroundColor: `${tierMeta?.color || "#64748b"}15` }}>
-              <TierIcon size={14} style={{ color: tierMeta?.color || "#64748b" }} />
-              <div className="min-w-0">
-                <div className="text-[10px] text-slate-500 uppercase">Plan</div>
-                <div className="font-semibold truncate" style={{ color: tierMeta?.color || "#64748b" }}>{tierMeta?.label || (s.subscription_tier || "—").replace(/_/g, " ")}</div>
-              </div>
-            </div>
-            <div className="rounded-md p-2 flex items-center gap-2 bg-slate-50">
-              <Calendar size={14} className="text-slate-500 flex-shrink-0" />
-              <div className="min-w-0">
-                <div className="text-[10px] text-slate-500 uppercase">Expires</div>
-                <div className={`font-semibold ${expColor}`} data-testid={`school-deadline-${s.id}`}>
-                  {expires ? expires.toISOString().slice(0, 10) : "—"}
-                  {daysLeft != null && <span className="ml-1 text-[10px]">({daysLeft < 0 ? "expired" : `${daysLeft}d`})</span>}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="flex items-center justify-between gap-2 pt-2 border-t">
-            <Switch checked={!!s.kill_switch} onCheckedChange={() => toggleKill(s.id, s.kill_switch)} data-testid={`kill-${s.id}`} title={s.kill_switch ? "Resume school" : "Pause school"} />
-            <span className="text-[10px] text-slate-500 -ml-1 flex-1">{s.kill_switch ? "Paused" : "Active"}</span>
-            <Button size="sm" variant="outline" onClick={() => setTierOpen((v) => !v)} className="text-xs" data-testid={`upgrade-btn-${s.id}`}>
-              <Settings2 size={12} className="mr-1" /> Plan
-            </Button>
-            <Button size="sm" variant="destructive" onClick={() => cancelSubscription(s.id, s.name)} className="text-xs" data-testid={`cancel-btn-${s.id}`}>Cancel</Button>
-          </div>
-
-          {tierOpen && (
-            <div className="mt-1 grid grid-cols-2 gap-2 p-2 rounded-md bg-slate-50 border">
-              {TIER_META.map((t) => {
-                const TIcon = t.icon;
-                const isCurrent = s.subscription_tier === t.key;
-                return (
-                  <button
-                    key={t.key}
-                    onClick={() => { setTierOpen(false); if (!isCurrent) updateTier(s.id, t.key); }}
-                    className={`flex items-center gap-2 px-2 py-1.5 rounded text-[11px] font-semibold transition ${isCurrent ? "bg-white border-2" : "bg-white border hover:shadow-sm"}`}
-                    style={{ borderColor: isCurrent ? t.color : undefined, color: t.color }}
-                    disabled={isCurrent}
-                    data-testid={`tier-opt-${s.id}-${t.key}`}
-                  >
-                    <TIcon size={12} /> {t.label}{isCurrent && " ✓"}
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      );
-    };
-
-    return (
-      <div>
-        {/* Tier filter row */}
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-5" data-testid="school-tier-filters">
-          <button
-            onClick={() => setTierFilter("all")}
-            className={`cs-card p-3 text-left transition ${tierFilter === "all" ? "ring-2 ring-slate-900 shadow-md" : "hover:shadow-md"}`}
-            data-testid="tier-filter-all"
-          >
-            <div className="text-[10px] uppercase tracking-wider text-slate-500">All schools</div>
-            <div className="font-display text-2xl font-bold cs-text-navy mt-1">{counts.all}</div>
-          </button>
-          {TIER_META.map((t) => {
-            const Icon = t.icon;
-            const isActive = tierFilter === t.key;
-            return (
-              <button
-                key={t.key}
-                onClick={() => setTierFilter(t.key)}
-                className={`cs-card p-3 text-left transition border-l-4 ${isActive ? "shadow-md ring-2" : "hover:shadow-md"}`}
-                style={{ borderLeftColor: t.color, ...(isActive ? { ringColor: t.color } : {}) }}
-                data-testid={`tier-filter-${t.key}`}
-              >
-                <div className="flex items-center gap-2">
-                  <Icon size={14} style={{ color: t.color }} />
-                  <div className="text-[10px] uppercase tracking-wider text-slate-500 truncate">{t.label}</div>
-                </div>
-                <div className="font-display text-2xl font-bold mt-1" style={{ color: t.color }}>{counts[t.key]}</div>
-              </button>
-            );
-          })}
-        </div>
-
-        {/* Cards grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4" data-testid="school-cards-grid">
-          {filtered.map((s) => <SchoolCard key={s.id} s={s} />)}
-          {!filtered.length && (
-            <div className="col-span-full cs-card p-10 text-center text-slate-500">
-              {tierFilter === "all" ? "No schools registered." : `No schools on the ${TIER_META.find((t) => t.key === tierFilter)?.label} plan yet.`}
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  };
-
-  const UsersPane = () => (
-    <div className="cs-card overflow-x-auto">
-      <Table>
-        <TableHeader><TableRow className="cs-bg-navy hover:cs-bg-navy">
-          <TableHead className="text-white">Email</TableHead>
-          <TableHead className="text-white">Name</TableHead>
-          <TableHead className="text-white">Role</TableHead>
-          <TableHead className="text-white">School</TableHead>
-          <TableHead className="text-white">Created</TableHead>
-        </TableRow></TableHeader>
-        <TableBody>
-          {usersAll.map((u, i) => (
-            <TableRow key={u.id} className={i % 2 ? "bg-slate-50" : ""} data-testid={`user-row-${u.id}`}>
-              <TableCell className="text-xs">{u.email}</TableCell>
-              <TableCell className="text-sm">{u.name || "—"}</TableCell>
-              <TableCell className="text-xs"><Badge className="cs-bg-blue text-white">{u.role}</Badge></TableCell>
-              <TableCell className="text-xs">{u.school_name}</TableCell>
-              <TableCell className="text-[11px] text-slate-500">{(u.created_at || "").slice(0, 10)}</TableCell>
-            </TableRow>
-          ))}
-          {!usersAll.length && <TableRow><TableCell colSpan={5} className="text-center text-slate-500 py-8">No users.</TableCell></TableRow>}
-        </TableBody>
-      </Table>
-    </div>
-  );
-
-  const StudentsPane = () => (
-    <div className="cs-card overflow-x-auto">
-      <Table>
-        <TableHeader><TableRow className="cs-bg-navy hover:cs-bg-navy">
-          <TableHead className="text-white">Name</TableHead>
-          <TableHead className="text-white">Class</TableHead>
-          <TableHead className="text-white">School</TableHead>
-          <TableHead className="text-white">Age/Gender</TableHead>
-          <TableHead className="text-white">Balance</TableHead>
-        </TableRow></TableHeader>
-        <TableBody>
-          {studentsAll.map((s, i) => (
-            <TableRow key={s.id} className={i % 2 ? "bg-slate-50" : ""} data-testid={`student-row-${s.id}`}>
-              <TableCell className="font-medium text-sm">{s.name}</TableCell>
-              <TableCell className="text-xs">{s.class_name}</TableCell>
-              <TableCell className="text-xs">{s.school_name}</TableCell>
-              <TableCell className="text-xs">{s.gender}, {s.age}</TableCell>
-              <TableCell className="text-xs">{(s.balance_due || 0) > 0 ? <Badge className="bg-amber-500 text-white">₦{Number(s.balance_due).toLocaleString()}</Badge> : <Badge className="cs-bg-green text-white">Clear</Badge>}</TableCell>
-            </TableRow>
-          ))}
-          {!studentsAll.length && <TableRow><TableCell colSpan={5} className="text-center text-slate-500 py-8">No students.</TableCell></TableRow>}
-        </TableBody>
-      </Table>
-    </div>
-  );
-
-  const LeadsPane = ({ openOnly = false }) => {
-    const rows = openOnly ? openLeads : leads;
-    return (
-      <div className="cs-card overflow-x-auto">
-        <Table>
-          <TableHeader><TableRow className="cs-bg-navy hover:cs-bg-navy">
-            <TableHead className="text-white">Name</TableHead>
-            <TableHead className="text-white">Email</TableHead>
-            <TableHead className="text-white">School</TableHead>
-            <TableHead className="text-white">Message</TableHead>
-            <TableHead className="text-white">Status</TableHead>
-            <TableHead className="text-white"></TableHead>
-          </TableRow></TableHeader>
-          <TableBody>
-            {rows.map((l, i) => (
-              <TableRow key={l.id} className={i % 2 ? "bg-slate-50" : ""} data-testid={`lead-row-${l.id}`}>
-                <TableCell className="text-sm">{l.name}</TableCell>
-                <TableCell className="text-xs">{l.email}</TableCell>
-                <TableCell className="text-xs">{l.school || "—"}</TableCell>
-                <TableCell className="text-xs max-w-md truncate" title={l.message}>{l.message}</TableCell>
-                <TableCell>{l.resolved ? <Badge className="cs-bg-green text-white">Resolved</Badge> : <Badge className="bg-amber-500 text-white">Open</Badge>}</TableCell>
-                <TableCell>{!l.resolved && <Button size="sm" variant="outline" onClick={() => resolveLead(l.id)} data-testid={`lead-resolve-${l.id}`}>Resolve</Button>}</TableCell>
-              </TableRow>
-            ))}
-            {!rows.length && <TableRow><TableCell colSpan={6} className="text-center text-slate-500 py-8">{openOnly ? "No open leads." : "No leads."}</TableCell></TableRow>}
-          </TableBody>
-        </Table>
-      </div>
-    );
-  };
-
-  const AwaitingPane = () => (
-    <div className="cs-card overflow-x-auto">
-      <Table>
-        <TableHeader><TableRow className="cs-bg-navy hover:cs-bg-navy">
-          <TableHead className="text-white">School</TableHead>
-          <TableHead className="text-white">Admin</TableHead>
-          <TableHead className="text-white">WhatsApp</TableHead>
-          <TableHead className="text-white">Status</TableHead>
-          <TableHead className="text-white">Code</TableHead>
-          <TableHead className="text-white">Receipt</TableHead>
-          <TableHead className="text-white">Typed</TableHead>
-          <TableHead className="text-white">Actions</TableHead>
-        </TableRow></TableHeader>
-        <TableBody>
-          {verifQueue.map((q, i) => {
-            const codeMatches = q.verification_code && q.latest_receipt?.whatsapp_code && q.verification_code === q.latest_receipt.whatsapp_code;
-            return (
-              <TableRow key={q.school_id} className={i % 2 ? "bg-slate-50" : ""} data-testid={`verif-row-${q.school_id}`}>
-                <TableCell className="font-medium text-sm">{q.school_name}</TableCell>
-                <TableCell className="text-xs">{q.admin_email}</TableCell>
-                <TableCell className="text-xs font-mono">{q.whatsapp_phone || "—"}</TableCell>
-                <TableCell><Badge className={q.verification_status === "pending_payment" ? "bg-amber-500 text-white" : "cs-bg-blue text-white"}>{q.verification_status}</Badge></TableCell>
-                <TableCell className="font-mono text-sm">{q.verification_code ? <span className="cs-text-blue font-bold">{q.verification_code}</span> : <span className="text-slate-400">—</span>}</TableCell>
-                <TableCell>{q.latest_receipt ? <Button size="sm" variant="outline" onClick={() => openReceipt(q.latest_receipt.id)}><Eye size={14} /></Button> : <span className="text-xs text-slate-400">—</span>}</TableCell>
-                <TableCell>{q.latest_receipt?.whatsapp_code ? <span className={`font-mono text-sm font-bold ${codeMatches ? "cs-text-green" : "text-amber-600"}`}>{q.latest_receipt.whatsapp_code} {codeMatches && "✓"}</span> : <span className="text-xs text-slate-400">—</span>}</TableCell>
-                <TableCell>
-                  <div className="flex flex-wrap gap-2">
-                    <Button size="sm" variant="outline" onClick={() => generateCode(q.school_id, q.school_name, q.whatsapp_phone)} data-testid={`verif-gen-${q.school_id}`}>{q.verification_code ? "Regenerate" : "Generate"}</Button>
-                    {q.latest_receipt && <>
-                      <Button size="sm" className="cs-bg-green text-white hover:opacity-90" onClick={() => verifyDecision(q.school_id, "approve")} data-testid={`verif-approve-${q.school_id}`}>Approve</Button>
-                      <Button size="sm" variant="destructive" onClick={() => verifyDecision(q.school_id, "reject")} data-testid={`verif-reject-${q.school_id}`}>Reject</Button>
-                    </>}
-                  </div>
-                </TableCell>
-              </TableRow>
-            );
-          })}
-          {!verifQueue.length && <TableRow><TableCell colSpan={8} className="text-center text-slate-500 py-10">No schools awaiting activation.</TableCell></TableRow>}
-        </TableBody>
-      </Table>
-    </div>
-  );
-
-  const ReceiptsPane = () => (
-    <div className="cs-card overflow-x-auto">
-      <Table>
-        <TableHeader><TableRow className="cs-bg-navy hover:cs-bg-navy">
-          <TableHead className="text-white">When</TableHead>
-          <TableHead className="text-white">From</TableHead>
-          <TableHead className="text-white">Tier</TableHead>
-          <TableHead className="text-white">Amount</TableHead>
-          <TableHead className="text-white">Status</TableHead>
-          <TableHead className="text-white">Actions</TableHead>
-        </TableRow></TableHeader>
-        <TableBody>
-          {receipts.map((r, i) => (
-            <TableRow key={r.id} className={i % 2 ? "bg-slate-50" : ""} data-testid={`receipt-row-${r.id}`}>
-              <TableCell className="text-[11px] text-slate-500">{(r.created_at || "").slice(0, 16).replace("T", " ")}</TableCell>
-              <TableCell className="text-xs">{r.submitted_by}</TableCell>
-              <TableCell className="text-xs">{(r.tier || "").replace(/_/g, " ")}</TableCell>
-              <TableCell className="text-sm font-semibold">₦{Number(r.amount_ngn || 0).toLocaleString()}</TableCell>
-              <TableCell><Badge className={r.status === "approved" ? "cs-bg-green text-white" : r.status === "rejected" ? "bg-red-500 text-white" : "bg-amber-500 text-white"}>{r.status}</Badge></TableCell>
-              <TableCell>
-                <div className="flex gap-1">
-                  <Button size="sm" variant="outline" onClick={() => openReceipt(r.id)} data-testid={`rcp-view-${r.id}`}><Eye size={12} /></Button>
-                  {r.status === "pending" && <>
-                    <Button size="sm" className="cs-bg-green text-white hover:opacity-90" onClick={() => decideReceipt(r.id, "approve")} data-testid={`rcp-approve-${r.id}`}>Approve</Button>
-                    <Button size="sm" variant="destructive" onClick={() => decideReceipt(r.id, "reject")} data-testid={`rcp-reject-${r.id}`}>Reject</Button>
-                  </>}
-                </div>
-              </TableCell>
-            </TableRow>
-          ))}
-          {!receipts.length && <TableRow><TableCell colSpan={6} className="text-center text-slate-500 py-8">No receipts yet.</TableCell></TableRow>}
-        </TableBody>
-      </Table>
-    </div>
-  );
-
-  const AnalyticsPane = () => analytics ? (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-      <ChartCard title="Schools by tier">
-        <DonutChart data={(analytics.schools_by_tier || []).map((d) => ({ name: d.tier?.replace(/_/g, " ") || "—", value: d.count }))} />
-      </ChartCard>
-      <ChartCard title="MRR (₦) over time">
-        <GrowthArea data={(analytics.mrr_over_time || []).map((d) => ({ name: d.month, value: d.mrr }))} />
-      </ChartCard>
-      <ChartCard title="Schools created per month" className="lg:col-span-2">
-        <BarSimple data={(analytics.schools_per_month || []).map((d) => ({ name: d.month, value: d.count }))} />
-      </ChartCard>
-    </div>
-  ) : <div className="text-slate-500">Loading analytics…</div>;
-
-  const AddSuperAdminPane = () => (
-    <div className="cs-card p-6 max-w-xl">
-      <div className="font-display font-bold cs-text-navy text-lg">Create another Super Admin</div>
-      <p className="text-xs text-slate-500 mt-1">Only Mervyn-trusted accounts. The new account has full God-mode access.</p>
-      <div className="mt-4 space-y-3">
-        <div><Label>Email</Label><Input type="email" value={newSuper.email} onChange={(e) => setNewSuper({ ...newSuper, email: e.target.value })} data-testid="newsuper-email" /></div>
-        <div><Label>Name</Label><Input value={newSuper.name} onChange={(e) => setNewSuper({ ...newSuper, name: e.target.value })} data-testid="newsuper-name" /></div>
-        <div><Label>Password</Label><Input type="password" value={newSuper.password} onChange={(e) => setNewSuper({ ...newSuper, password: e.target.value })} data-testid="newsuper-password" /></div>
-        <Button onClick={addSuperAdmin} className="cs-bg-navy text-white hover:opacity-90 rounded-full" data-testid="newsuper-submit"><UserPlus size={14} className="mr-2" /> Create Super Admin</Button>
-      </div>
-    </div>
-  );
-
-  const pane = {
-    schools: <SchoolsPane />,
-    users: <UsersPane />,
-    students: <StudentsPane />,
-    leads: <LeadsPane openOnly={false} />,
-    open_leads: <LeadsPane openOnly={true} />,
-    awaiting: <AwaitingPane />,
-    receipts: <ReceiptsPane />,
-    analytics: <AnalyticsPane />,
-    add_super: <AddSuperAdminPane />,
-  }[tab];
+  const filteredReceipts = useMemo(() => {
+    const q = receiptSearch.trim().toLowerCase();
+    return receipts.filter((r) => {
+      const blob = `${r.submitted_by || ""} ${r.tier || ""} ${r.status || ""}`.toLowerCase();
+      if (q && !blob.includes(q)) return false;
+      if ((receiptFrom || receiptTo) && !inRange(r.created_at, receiptFrom, receiptTo)) return false;
+      return true;
+    });
+  }, [receipts, receiptSearch, receiptFrom, receiptTo]);
 
   const currentLabel = NAV.find((n) => n.key === tab)?.label || "Super Admin Dashboard";
+  const pickPane = (k) => { setTab(k); setDrawerOpen(false); };
 
-  // ---- SIDEBAR (shared markup for desktop + mobile drawer) ----
+  // -------- Reusable filter bar (inline JSX, not a component) --------
+  const renderFilterBar = ({ searchVal, onSearch, from, onFrom, to, onTo, onClear, placeholder, testidPrefix }) => (
+    <div className="cs-card p-3 mb-4 flex flex-col sm:flex-row gap-2 items-stretch sm:items-center" data-testid={`${testidPrefix}-filterbar`}>
+      <div className="relative flex-1 min-w-0">
+        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+        <Input placeholder={placeholder} value={searchVal} onChange={(e) => onSearch(e.target.value)} className="pl-9" data-testid={`${testidPrefix}-search`} />
+      </div>
+      <div className="flex items-center gap-2">
+        <Input type="date" value={from} onChange={(e) => onFrom(e.target.value)} className="w-[150px]" data-testid={`${testidPrefix}-from`} />
+        <span className="text-slate-400 text-xs">to</span>
+        <Input type="date" value={to} onChange={(e) => onTo(e.target.value)} className="w-[150px]" data-testid={`${testidPrefix}-to`} />
+        <Button variant="outline" size="sm" onClick={onClear} title="Clear filters" data-testid={`${testidPrefix}-clear`}><FilterX size={14} /></Button>
+      </div>
+    </div>
+  );
+
+  // -------- Sidebar markup --------
   const SidebarContent = ({ onClickItem }) => (
     <div className="h-full flex flex-col" style={{ background: "linear-gradient(180deg, #001a38 0%, #002147 100%)" }}>
       <div className="px-3 py-5 flex items-center justify-between border-b border-white/10">
@@ -549,9 +279,376 @@ export default function SuperAdmin() {
       </nav>
       <div className="p-2 border-t border-white/10">
         <Button onClick={() => setOverrideOpen(true)} className="w-full bg-white/10 hover:bg-white/20 text-white rounded-md text-xs h-9 justify-start gap-2 border border-white/10" data-testid="open-pw-override">
-          <KeyRound size={14} /> <span className="hidden lg:inline">Password override</span><span className="inline lg:hidden">Password override</span>
+          <KeyRound size={14} /> Password override
         </Button>
       </div>
+    </div>
+  );
+
+  // -------- Pane bodies as direct JSX (no nested components → inputs keep focus) --------
+  let paneBody = null;
+
+  if (tab === "schools") {
+    const counts = { all: schools.length };
+    TIER_META.forEach((t) => { counts[t.key] = schools.filter((s) => s.subscription_tier === t.key).length; });
+    paneBody = (
+      <div>
+        {/* Tier filter row */}
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4" data-testid="school-tier-filters">
+          <button onClick={() => setTierFilter("all")} className={`cs-card p-3 text-left transition ${tierFilter === "all" ? "ring-2 ring-slate-900 shadow-md" : "hover:shadow-md"}`} data-testid="tier-filter-all">
+            <div className="text-[10px] uppercase tracking-wider text-slate-500">All schools</div>
+            <div className="font-display text-2xl font-bold cs-text-navy mt-1">{counts.all}</div>
+          </button>
+          {TIER_META.map((t) => {
+            const Icon = t.icon; const isActive = tierFilter === t.key;
+            return (
+              <button key={t.key} onClick={() => setTierFilter(t.key)} className={`cs-card p-3 text-left transition border-l-4 ${isActive ? "shadow-md ring-2" : "hover:shadow-md"}`} style={{ borderLeftColor: t.color }} data-testid={`tier-filter-${t.key}`}>
+                <div className="flex items-center gap-2">
+                  <Icon size={14} style={{ color: t.color }} />
+                  <div className="text-[10px] uppercase tracking-wider text-slate-500 truncate">{t.label}</div>
+                </div>
+                <div className="font-display text-2xl font-bold mt-1" style={{ color: t.color }}>{counts[t.key]}</div>
+              </button>
+            );
+          })}
+        </div>
+
+        {renderFilterBar({
+          searchVal: schoolSearch, onSearch: setSchoolSearch,
+          from: schoolFrom, onFrom: setSchoolFrom, to: schoolTo, onTo: setSchoolTo,
+          onClear: () => { setSchoolSearch(""); setSchoolFrom(""); setSchoolTo(""); },
+          placeholder: "Search school name…", testidPrefix: "schools",
+        })}
+
+        {/* Cards grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4" data-testid="school-cards-grid">
+          {filteredSchools.map((s) => {
+            const tierMeta = TIER_META.find((t) => t.key === s.subscription_tier);
+            const active = s.verification_status === "active" && !s.kill_switch;
+            const expires = s.subscription_expires_at ? new Date(s.subscription_expires_at) : null;
+            const daysLeft = expires ? Math.ceil((expires - new Date()) / 86400000) : null;
+            const expColor = daysLeft == null ? "text-slate-400" : daysLeft < 0 ? "text-red-600" : daysLeft <= 14 ? "text-red-600" : daysLeft <= 30 ? "text-amber-600" : "text-slate-600";
+            const TierIcon = tierMeta?.icon || Building2;
+            const studentCount = studentsBySchool[s.id] || 0;
+            const staffCount = staffBySchool[s.id] || 0;
+            const pickerOpen = tierPickerForId === s.id;
+            return (
+              <div key={s.id} className="cs-card p-5 flex flex-col gap-3 border-t-4" style={{ borderTopColor: tierMeta?.color || "#64748b" }} data-testid={`school-card-${s.id}`}>
+                <div className="flex items-start gap-3">
+                  {/* Logo placeholder */}
+                  <div className="w-12 h-12 rounded-lg flex items-center justify-center text-white font-bold text-sm flex-shrink-0 overflow-hidden" style={{ backgroundColor: tierMeta?.color || "#002147" }} data-testid={`school-logo-${s.id}`}>
+                    {s.logo_url ? <img src={s.logo_url} alt="" className="w-full h-full object-cover" /> : initialsOf(s.name)}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="font-display font-bold cs-text-navy text-base truncate" title={s.name}>{s.name}</div>
+                    <div className="text-[11px] text-slate-500 capitalize">{s.school_type || "—"} · Registered {ymd(s.created_at)}</div>
+                  </div>
+                  <Badge className={active ? "cs-bg-green text-white" : s.kill_switch ? "bg-red-500 text-white" : "bg-amber-500 text-white"} data-testid={`school-status-${s.id}`}>
+                    {active ? "Active" : s.kill_switch ? "Paused" : (s.verification_status || "Pending")}
+                  </Badge>
+                </div>
+
+                {/* Stat row: students + staff + plan + expires */}
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div className="rounded-md p-2 bg-slate-50 flex items-center gap-2">
+                    <GraduationCap size={14} className="text-slate-500 flex-shrink-0" />
+                    <div className="min-w-0"><div className="text-[10px] text-slate-500 uppercase">Students</div>
+                      <div className="font-bold cs-text-navy" data-testid={`school-students-${s.id}`}>{studentCount}</div>
+                    </div>
+                  </div>
+                  <div className="rounded-md p-2 bg-slate-50 flex items-center gap-2">
+                    <Users size={14} className="text-slate-500 flex-shrink-0" />
+                    <div className="min-w-0"><div className="text-[10px] text-slate-500 uppercase">Staff</div>
+                      <div className="font-bold cs-text-navy" data-testid={`school-staff-${s.id}`}>{staffCount}</div>
+                    </div>
+                  </div>
+                  <div className="rounded-md p-2 flex items-center gap-2" style={{ backgroundColor: `${tierMeta?.color || "#64748b"}15` }}>
+                    <TierIcon size={14} style={{ color: tierMeta?.color || "#64748b" }} />
+                    <div className="min-w-0"><div className="text-[10px] text-slate-500 uppercase">Plan</div>
+                      <div className="font-semibold truncate" style={{ color: tierMeta?.color || "#64748b" }}>{tierMeta?.label || (s.subscription_tier || "—").replace(/_/g, " ")}</div>
+                    </div>
+                  </div>
+                  <div className="rounded-md p-2 bg-slate-50 flex items-center gap-2">
+                    <Calendar size={14} className="text-slate-500 flex-shrink-0" />
+                    <div className="min-w-0"><div className="text-[10px] text-slate-500 uppercase">Expires</div>
+                      <div className={`font-semibold ${expColor}`} data-testid={`school-deadline-${s.id}`}>
+                        {expires ? ymd(expires) : "—"}
+                        {daysLeft != null && <span className="ml-1 text-[10px]">({daysLeft < 0 ? "exp" : `${daysLeft}d`})</span>}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Actions */}
+                <div className="flex items-center justify-between gap-2 pt-2 border-t">
+                  <div className="flex items-center gap-1">
+                    <Switch checked={!!s.kill_switch} onCheckedChange={() => toggleKill(s.id, s.kill_switch)} data-testid={`kill-${s.id}`} title={s.kill_switch ? "Resume school" : "Pause school"} />
+                    <span className="text-[10px] text-slate-500">{s.kill_switch ? "Paused" : "Active"}</span>
+                  </div>
+                  <div className="flex gap-1">
+                    <Button size="sm" variant="outline" onClick={() => setTierPickerForId(pickerOpen ? null : s.id)} className="text-xs" data-testid={`upgrade-btn-${s.id}`}><Settings2 size={12} className="mr-1" /> Plan</Button>
+                    <Button size="sm" variant="destructive" onClick={() => cancelSubscription(s.id, s.name)} className="text-xs" data-testid={`cancel-btn-${s.id}`}>Cancel</Button>
+                  </div>
+                </div>
+
+                {pickerOpen && (
+                  <div className="mt-1 grid grid-cols-2 gap-2 p-2 rounded-md bg-slate-50 border">
+                    {TIER_META.map((t) => {
+                      const TIcon = t.icon; const isCurrent = s.subscription_tier === t.key;
+                      return (
+                        <button key={t.key} onClick={() => { setTierPickerForId(null); if (!isCurrent) updateTier(s.id, t.key); }}
+                          className={`flex items-center gap-2 px-2 py-1.5 rounded text-[11px] font-semibold transition ${isCurrent ? "bg-white border-2" : "bg-white border hover:shadow-sm"}`}
+                          style={{ borderColor: isCurrent ? t.color : undefined, color: t.color }}
+                          disabled={isCurrent} data-testid={`tier-opt-${s.id}-${t.key}`}>
+                          <TIcon size={12} /> {t.label}{isCurrent && " ✓"}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+          {!filteredSchools.length && <div className="col-span-full cs-card p-10 text-center text-slate-500">No schools match the filters.</div>}
+        </div>
+      </div>
+    );
+
+  } else if (tab === "users") {
+    paneBody = (
+      <div>
+        {renderFilterBar({
+          searchVal: userSearch, onSearch: setUserSearch,
+          from: userFrom, onFrom: setUserFrom, to: userTo, onTo: setUserTo,
+          onClear: () => { setUserSearch(""); setUserFrom(""); setUserTo(""); },
+          placeholder: "Search by email, name, role, school…", testidPrefix: "users",
+        })}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3" data-testid="users-grid">
+          {filteredUsers.map((u) => (
+            <div key={u.id} className="cs-card p-4" data-testid={`user-card-${u.id}`}>
+              <div className="flex items-start gap-3">
+                <div className="w-10 h-10 rounded-full cs-bg-navy text-white flex items-center justify-center text-xs font-bold flex-shrink-0">{initialsOf(u.name || u.email)}</div>
+                <div className="min-w-0 flex-1">
+                  <div className="font-semibold cs-text-navy text-sm truncate" title={u.name}>{u.name || "—"}</div>
+                  <div className="text-[11px] text-slate-500 truncate" title={u.email}>{u.email}</div>
+                </div>
+              </div>
+              <div className="mt-3 flex items-center justify-between text-[11px]">
+                <Badge className="cs-bg-blue text-white capitalize">{(u.role || "").replace(/_/g, " ")}</Badge>
+                <span className="text-slate-500">{ymd(u.created_at)}</span>
+              </div>
+              <div className="mt-1 text-[11px] text-slate-500 truncate">{u.school_name}</div>
+            </div>
+          ))}
+          {!filteredUsers.length && <div className="col-span-full cs-card p-10 text-center text-slate-500">No users match the filters.</div>}
+        </div>
+      </div>
+    );
+
+  } else if (tab === "students") {
+    // School-summary grid (no individual student records)
+    const summaries = schools.map((s) => ({ id: s.id, name: s.name, count: studentsBySchool[s.id] || 0, tier: s.subscription_tier }))
+      .sort((a, b) => b.count - a.count);
+    paneBody = (
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4" data-testid="students-summary-grid">
+        {summaries.map((s) => {
+          const tierMeta = TIER_META.find((t) => t.key === s.tier);
+          return (
+            <div key={s.id} className="cs-card p-5 border-t-4" style={{ borderTopColor: tierMeta?.color || "#64748b" }} data-testid={`school-summary-${s.id}`}>
+              <div className="flex items-start gap-3">
+                <div className="w-12 h-12 rounded-lg flex items-center justify-center text-white font-bold text-sm flex-shrink-0" style={{ backgroundColor: tierMeta?.color || "#002147" }}>{initialsOf(s.name)}</div>
+                <div className="min-w-0 flex-1">
+                  <div className="font-display font-bold cs-text-navy text-sm truncate" title={s.name}>{s.name}</div>
+                  <div className="text-[10px] text-slate-500 uppercase tracking-wider">{tierMeta?.label || "—"}</div>
+                </div>
+              </div>
+              <div className="mt-3 flex items-end justify-between">
+                <div>
+                  <div className="text-[10px] text-slate-500 uppercase tracking-wider">Total students</div>
+                  <div className="font-display text-3xl font-bold cs-text-navy" data-testid={`students-count-${s.id}`}>{s.count}</div>
+                </div>
+                <GraduationCap size={28} className="text-slate-200" />
+              </div>
+            </div>
+          );
+        })}
+        {!summaries.length && <div className="col-span-full cs-card p-10 text-center text-slate-500">No schools registered.</div>}
+      </div>
+    );
+
+  } else if (tab === "leads" || tab === "open_leads") {
+    const rows = tab === "open_leads" ? openLeads : leads;
+    paneBody = (
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3" data-testid={`${tab}-grid`}>
+        {rows.map((l) => (
+          <div key={l.id} className="cs-card p-4 flex flex-col gap-2" data-testid={`lead-card-${l.id}`}>
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0 flex-1">
+                <div className="font-semibold cs-text-navy text-sm truncate">{l.name}</div>
+                <div className="text-[11px] text-slate-500 truncate">{l.email}</div>
+                {l.school && <div className="text-[11px] text-slate-500 truncate">{l.school}</div>}
+              </div>
+              {l.resolved ? <Badge className="cs-bg-green text-white text-[10px]">Resolved</Badge> : <Badge className="bg-amber-500 text-white text-[10px]">Open</Badge>}
+            </div>
+            <p className="text-xs text-slate-600 line-clamp-3" title={l.message}>{l.message}</p>
+            {!l.resolved && <Button size="sm" variant="outline" onClick={() => resolveLead(l.id)} className="self-end" data-testid={`lead-resolve-${l.id}`}>Mark resolved</Button>}
+          </div>
+        ))}
+        {!rows.length && <div className="col-span-full cs-card p-10 text-center text-slate-500">{tab === "open_leads" ? "No open leads." : "No leads yet."}</div>}
+      </div>
+    );
+
+  } else if (tab === "awaiting") {
+    paneBody = (
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4" data-testid="awaiting-grid">
+        {verifQueue.map((q) => {
+          const codeMatches = q.verification_code && q.latest_receipt?.whatsapp_code && q.verification_code === q.latest_receipt.whatsapp_code;
+          return (
+            <div key={q.school_id} className="cs-card p-5 flex flex-col gap-3" data-testid={`awaiting-card-${q.school_id}`}>
+              <div className="flex items-start gap-3">
+                <div className="w-12 h-12 rounded-lg cs-bg-navy text-white flex items-center justify-center font-bold text-sm flex-shrink-0">{initialsOf(q.school_name)}</div>
+                <div className="min-w-0 flex-1">
+                  <div className="font-display font-bold cs-text-navy text-sm truncate">{q.school_name}</div>
+                  <div className="text-[11px] text-slate-500 truncate">{q.admin_email}</div>
+                  <div className="text-[11px] text-slate-500 font-mono">{q.whatsapp_phone || "—"}</div>
+                </div>
+                <Badge className={q.verification_status === "pending_payment" ? "bg-amber-500 text-white text-[10px]" : "cs-bg-blue text-white text-[10px]"}>{q.verification_status}</Badge>
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="rounded p-2 bg-slate-50">
+                  <div className="text-[10px] text-slate-500 uppercase">Code</div>
+                  <div className="font-mono font-bold">{q.verification_code || <span className="text-slate-400">—</span>}</div>
+                </div>
+                <div className="rounded p-2 bg-slate-50">
+                  <div className="text-[10px] text-slate-500 uppercase">Typed</div>
+                  <div className={`font-mono font-bold ${codeMatches ? "cs-text-green" : q.latest_receipt?.whatsapp_code ? "text-amber-600" : ""}`}>
+                    {q.latest_receipt?.whatsapp_code || <span className="text-slate-400">—</span>} {codeMatches && "✓"}
+                  </div>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-1.5 pt-2 border-t">
+                <Button size="sm" variant="outline" onClick={() => generateCode(q.school_id, q.school_name, q.whatsapp_phone)} className="text-xs" data-testid={`verif-gen-${q.school_id}`}>{q.verification_code ? "Regenerate" : "Generate code"}</Button>
+                {q.latest_receipt && (
+                  <>
+                    <Button size="sm" variant="outline" onClick={() => openReceipt(q.latest_receipt.id)} className="text-xs" data-testid={`verif-view-${q.school_id}`}><Eye size={12} /></Button>
+                    <Button size="sm" className="cs-bg-green text-white text-xs" onClick={() => verifyDecision(q.school_id, "approve")} data-testid={`verif-approve-${q.school_id}`}>Approve</Button>
+                    <Button size="sm" variant="destructive" className="text-xs" onClick={() => verifyDecision(q.school_id, "reject")} data-testid={`verif-reject-${q.school_id}`}>Reject</Button>
+                  </>
+                )}
+              </div>
+            </div>
+          );
+        })}
+        {!verifQueue.length && <div className="col-span-full cs-card p-10 text-center text-slate-500">No schools awaiting activation.</div>}
+      </div>
+    );
+
+  } else if (tab === "receipts") {
+    paneBody = (
+      <div>
+        {renderFilterBar({
+          searchVal: receiptSearch, onSearch: setReceiptSearch,
+          from: receiptFrom, onFrom: setReceiptFrom, to: receiptTo, onTo: setReceiptTo,
+          onClear: () => { setReceiptSearch(""); setReceiptFrom(""); setReceiptTo(""); },
+          placeholder: "Search by email, tier or status…", testidPrefix: "receipts",
+        })}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4" data-testid="receipts-grid">
+          {filteredReceipts.map((r) => (
+            <div key={r.id} className="cs-card p-4 flex flex-col gap-2" data-testid={`receipt-card-${r.id}`}>
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0 flex-1">
+                  <div className="text-[10px] uppercase tracking-wider text-slate-500">{(r.created_at || "").slice(0, 16).replace("T", " ")}</div>
+                  <div className="text-sm font-semibold cs-text-navy truncate">{r.submitted_by}</div>
+                </div>
+                <Badge className={r.status === "approved" ? "cs-bg-green text-white text-[10px]" : r.status === "rejected" ? "bg-red-500 text-white text-[10px]" : "bg-amber-500 text-white text-[10px]"}>{r.status}</Badge>
+              </div>
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-slate-500">{(r.tier || "").replace(/_/g, " ")}</span>
+                <span className="font-bold cs-text-navy">₦{Number(r.amount_ngn || 0).toLocaleString()}</span>
+              </div>
+              <div className="flex gap-1 pt-2 border-t">
+                <Button size="sm" variant="outline" className="text-xs" onClick={() => openReceipt(r.id)} data-testid={`rcp-view-${r.id}`}><Eye size={12} className="mr-1" /> View</Button>
+                {r.status === "pending" && (
+                  <>
+                    <Button size="sm" className="cs-bg-green text-white text-xs" onClick={() => decideReceipt(r.id, "approve")} data-testid={`rcp-approve-${r.id}`}>Approve</Button>
+                    <Button size="sm" variant="destructive" className="text-xs" onClick={() => decideReceipt(r.id, "reject")} data-testid={`rcp-reject-${r.id}`}>Reject</Button>
+                  </>
+                )}
+              </div>
+            </div>
+          ))}
+          {!filteredReceipts.length && <div className="col-span-full cs-card p-10 text-center text-slate-500">No receipts match the filters.</div>}
+        </div>
+      </div>
+    );
+
+  } else if (tab === "analytics") {
+    paneBody = analytics ? (
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4" data-testid="analytics-grid">
+        <ChartCard title="Schools by tier">
+          <DonutChart data={(analytics.schools_by_tier || []).map((d) => ({ name: (d.tier || "—").replace(/_/g, " "), value: d.count }))} />
+        </ChartCard>
+        <ChartCard title="MRR (₦) over time">
+          <GrowthArea data={(analytics.mrr_over_time || []).map((d) => ({ name: d.month, value: d.mrr }))} />
+        </ChartCard>
+        <ChartCard title="Schools created per month" className="lg:col-span-2">
+          <BarSimple data={(analytics.schools_per_month || []).map((d) => ({ name: d.month, value: d.count }))} />
+        </ChartCard>
+      </div>
+    ) : <div className="text-slate-500">Loading analytics…</div>;
+
+  } else if (tab === "add_super") {
+    paneBody = (
+      <div className="cs-card p-6 max-w-xl" data-testid="add-super-pane">
+        <div className="font-display font-bold cs-text-navy text-lg">Create another Super Admin</div>
+        <p className="text-xs text-slate-500 mt-1">Only trusted accounts. The new account has full God-mode access.</p>
+        <div className="mt-4 space-y-3">
+          <div>
+            <Label>Email</Label>
+            <Input type="email" autoComplete="off" value={newSuper.email}
+              onChange={(e) => setNewSuper((v) => ({ ...v, email: e.target.value }))}
+              data-testid="newsuper-email" />
+          </div>
+          <div>
+            <Label>Name</Label>
+            <Input autoComplete="off" value={newSuper.name}
+              onChange={(e) => setNewSuper((v) => ({ ...v, name: e.target.value }))}
+              data-testid="newsuper-name" />
+          </div>
+          <div>
+            <Label>Password</Label>
+            <Input type="password" autoComplete="new-password" value={newSuper.password}
+              onChange={(e) => setNewSuper((v) => ({ ...v, password: e.target.value }))}
+              data-testid="newsuper-password" />
+          </div>
+          <Button onClick={addSuperAdmin} className="cs-bg-navy text-white hover:opacity-90 rounded-full" data-testid="newsuper-submit"><UserPlus size={14} className="mr-2" /> Create Super Admin</Button>
+        </div>
+      </div>
+    );
+  }
+
+  // ---- KPI row (always on top) ----
+  const KpiRow = stats && (
+    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
+      {[
+        { i: Building2, l: "Schools", v: stats.schools },
+        { i: Users, l: "Users", v: stats.users },
+        { i: GraduationCap, l: "Students", v: stats.students },
+        { i: Inbox, l: "Leads", v: stats.leads },
+        { i: AlertTriangle, l: "Open leads", v: stats.open_leads },
+        { i: ShieldCheck, l: "Awaiting", v: stats.pending_schools ?? 0 },
+      ].map((s, i) => {
+        const Icon = s.i;
+        return (
+          <div key={i} className="cs-card p-3 flex items-center gap-3" data-testid={`super-stat-${i}`}>
+            <div className="w-9 h-9 rounded-md cs-bg-navy text-white flex items-center justify-center"><Icon size={16} /></div>
+            <div className="min-w-0">
+              <div className="text-[10px] uppercase tracking-wider text-slate-500 truncate">{s.l}</div>
+              <div className="font-display text-xl font-bold cs-text-navy">{s.v}</div>
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 
@@ -559,12 +656,10 @@ export default function SuperAdmin() {
     <div className="min-h-screen bg-slate-50">
       <Navbar variant="dashboard" />
 
-      {/* Desktop sidebar: ≥640 icon-only strip, ≥1024 full label */}
       <aside className="hidden sm:block fixed left-0 top-14 bottom-0 z-30 w-16 lg:w-56 border-r" data-testid="super-sidebar-desktop">
         <SidebarContent onClickItem={(k) => setTab(k)} />
       </aside>
 
-      {/* Mobile drawer */}
       {drawerOpen && (
         <div className="sm:hidden fixed inset-0 z-40" data-testid="super-drawer">
           <div className="absolute inset-0 bg-slate-900/60" onClick={() => setDrawerOpen(false)} />
@@ -575,7 +670,6 @@ export default function SuperAdmin() {
       )}
 
       <main className="sm:ml-16 lg:ml-56 px-4 sm:px-6 lg:px-8 py-6" data-testid="super-admin">
-        {/* Mobile header with hamburger */}
         <div className="flex items-center justify-between mb-4 sm:mb-6">
           <div className="flex items-center gap-3">
             <button className="sm:hidden p-2 rounded-md border border-slate-200 bg-white" onClick={() => setDrawerOpen(true)} data-testid="super-hamburger"><Menu size={18} /></button>
@@ -587,11 +681,11 @@ export default function SuperAdmin() {
           </div>
         </div>
 
-        <KpiRow />
+        {KpiRow}
 
         <div className="mt-2">
           <h2 className="font-display text-lg font-bold cs-text-navy mb-3">{currentLabel}</h2>
-          {pane}
+          {paneBody}
         </div>
       </main>
 
@@ -600,8 +694,8 @@ export default function SuperAdmin() {
         <DialogContent>
           <DialogHeader><DialogTitle>Password override</DialogTitle></DialogHeader>
           <div className="space-y-3">
-            <Input placeholder="user email" value={override.user_email} onChange={(e) => setOverride({ ...override, user_email: e.target.value })} data-testid="pw-override-email" />
-            <Input type="password" placeholder="new password" value={override.new_password} onChange={(e) => setOverride({ ...override, new_password: e.target.value })} data-testid="pw-override-password" />
+            <Input placeholder="user email" value={override.user_email} onChange={(e) => setOverride((v) => ({ ...v, user_email: e.target.value }))} data-testid="pw-override-email" />
+            <Input type="password" placeholder="new password" value={override.new_password} onChange={(e) => setOverride((v) => ({ ...v, new_password: e.target.value }))} data-testid="pw-override-password" />
           </div>
           <DialogFooter><Button onClick={submitOverride} className="cs-bg-navy text-white" data-testid="pw-override-submit">Update password</Button></DialogFooter>
         </DialogContent>
