@@ -41,6 +41,8 @@ def _user_public(u: dict) -> dict:
         "student_id": u.get("student_id"),
         "assigned_class": u.get("assigned_class"),
         "assigned_classes": u.get("assigned_classes", []),
+        "assigned_subjects": u.get("assigned_subjects", []),
+        "is_class_teacher": bool(u.get("is_class_teacher", False)),
         "school_role": u.get("school_role"),
         "is_admin": bool(u.get("is_admin", False)),
         "password_changed_by_user": bool(u.get("password_changed_by_user", False)),

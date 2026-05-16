@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import Navbar from "@/components/Navbar.jsx";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,14 +14,20 @@ import { useAuth } from "@/lib/auth.jsx";
 import { api, formatApiError } from "@/lib/api";
 import { toast } from "sonner";
 import StarRating from "@/components/StarRating.jsx";
-import { Save, Plus, Trash2, FileText, CheckCircle2, Eye, Image as ImageIcon, X, FileSpreadsheet, Users } from "lucide-react";
+import {
+  Save, Plus, Trash2, Eye, Image as ImageIcon, X as XIcon, FileSpreadsheet, Users,
+  Menu, ChevronRight, LogOut, BadgeCheck, LayoutDashboard, ClipboardList, FileBarChart,
+  BookOpen, GraduationCap,
+} from "lucide-react";
 import BulkUploadDialog from "@/components/BulkUploadDialog.jsx";
 
 const SKILLS = ["Punctuality", "Attentiveness", "Neatness", "Honesty", "Sportsmanship", "Leadership"];
 const TERMS = ["1st Term", "2nd Term", "3rd Term"];
 
 export default function TeacherDashboard() {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
+
   const [students, setStudents] = useState([]);
   const [classFilter, setClassFilter] = useState("");
   const [term, setTerm] = useState("1st Term");
@@ -37,8 +44,17 @@ export default function TeacherDashboard() {
   const [examDlg, setExamDlg] = useState(false);
   const [examForm, setExamForm] = useState(_emptyExam());
   const [editingId, setEditingId] = useState(null);
-  const [attemptsDlg, setAttemptsDlg] = useState(null); // exam_id
+  const [attemptsDlg, setAttemptsDlg] = useState(null);
   const [parentBulkOpen, setParentBulkOpen] = useState(false);
+
+  // Shell
+  const [tab, setTab] = useState("overview");
+  const [drawerOpen, setDrawerOpen] = useState(false);
+
+  const handleLogout = async () => {
+    try { await logout(); } catch { /* noop */ }
+    navigate("/");
+  };
 
   const myClasses = useMemo(() => {
     const list = [];
@@ -46,6 +62,12 @@ export default function TeacherDashboard() {
     else if (user?.assigned_class) list.push(user.assigned_class);
     return Array.from(new Set(list));
   }, [user]);
+
+  // Class-teacher gating: explicit flag OR legacy (has any assigned class)
+  const isClassTeacher = useMemo(
+    () => Boolean(user?.is_class_teacher) || myClasses.length > 0,
+    [user, myClasses]
+  );
 
   const allowTrueFalse = (school?.school_type === "primary" || school?.school_type === "mixed");
 
@@ -83,6 +105,13 @@ export default function TeacherDashboard() {
     if (!selected) return [];
     return classSubjects[selected.class_name] || [];
   }, [selected, classSubjects]);
+
+  // KPIs for overview
+  const myClassStudents = useMemo(
+    () => students.filter((s) => myClasses.includes(s.class_name)),
+    [students, myClasses]
+  );
+  const publishedExams = useMemo(() => exams.filter((e) => e.published).length, [exams]);
 
   const loadStudentScores = async (st) => {
     setSelected(st);
@@ -164,7 +193,6 @@ export default function TeacherDashboard() {
     if (opts.length <= 2) { toast.error("Minimum 2 options"); return; }
     opts.splice(oi, 1);
     next[qi].options = opts;
-    // Re-anchor correct_idx if it was on/after removed option
     if (next[qi].correct_idx === oi) next[qi].correct_idx = 0;
     else if (next[qi].correct_idx > oi) next[qi].correct_idx = next[qi].correct_idx - 1;
     setExamForm({ ...examForm, questions: next });
@@ -231,207 +259,399 @@ export default function TeacherDashboard() {
     catch (err) { toast.error(formatApiError(err.response?.data?.detail) || err.message); }
   };
 
-  return (
-    <div className="min-h-screen">
-      <Navbar variant="dashboard" />
-      <div className="max-w-7xl mx-auto px-6 py-8" data-testid="teacher-dashboard">
-        <span className="eyebrow">TEACHER PORTAL</span>
-        <h1 className="font-display text-3xl font-bold cs-text-navy mt-1">Hello, {user?.name}</h1>
-        <p className="text-sm text-slate-500 mt-1">Enter scores & skill ratings — and create CBT exams that auto-grade.</p>
+  // ------- Sidebar nav -------
+  const NAV = [
+    { k: "overview", l: "Overview", I: LayoutDashboard },
+    { k: "scores", l: "Scores Panel", I: ClipboardList },
+    { k: "cbt", l: "CBT Results", I: FileBarChart },
+    ...(isClassTeacher ? [{ k: "reports", l: "My Class Reports", I: GraduationCap }] : []),
+  ];
+  const currentLabel = NAV.find((n) => n.k === tab)?.l || "Dashboard";
 
-        <Tabs defaultValue="scores" className="mt-6">
-          <TabsList>
-            <TabsTrigger value="scores" data-testid="t-tab-scores">Score entry</TabsTrigger>
-            <TabsTrigger value="cbt" data-testid="t-tab-cbt">CBT exams</TabsTrigger>
-            <TabsTrigger value="parents" data-testid="t-tab-parents">Parents</TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="scores" className="mt-6">
-            <div className="cs-card p-5 grid sm:grid-cols-3 gap-4">
-              <div>
-                <Label>Class</Label>
-                <Select value={classFilter} onValueChange={(v) => setClassFilter(v === "__all__" ? "" : v)}>
-                  <SelectTrigger data-testid="class-filter"><SelectValue placeholder="All classes" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__all__">All</SelectItem>
-                    {classes.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label>Term</Label>
-                <Select value={term} onValueChange={setTerm}>
-                  <SelectTrigger data-testid="term-select"><SelectValue /></SelectTrigger>
-                  <SelectContent>{TERMS.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label>Academic year</Label>
-                <Input value={year} onChange={(e) => setYear(e.target.value)} data-testid="year-input" />
-              </div>
-            </div>
-
-            <div className="mt-6 grid lg:grid-cols-[320px_1fr] gap-6">
-              <div className="cs-card p-2 max-h-[600px] overflow-auto">
-                <h3 className="px-3 py-2 font-semibold cs-text-navy text-sm">Roster ({filtered.length})</h3>
-                <div className="divide-y">
-                  {filtered.map((s) => (
-                    <button
-                      key={s.id}
-                      onClick={() => loadStudentScores(s)}
-                      className={`w-full text-left px-3 py-3 hover:bg-slate-50 transition ${selected?.id === s.id ? "bg-slate-50" : ""}`}
-                      data-testid={`roster-${s.id}`}
-                    >
-                      <div className="font-medium cs-text-navy text-sm">{s.name}</div>
-                      <div className="text-xs text-slate-500">{s.class_name} · {s.gender}</div>
-                    </button>
-                  ))}
-                  {!filtered.length && <div className="p-6 text-sm text-slate-500">No students.</div>}
-                </div>
-              </div>
-
-              <div className="cs-card p-6">
-                {!selected ? (
-                  <div className="text-slate-500 text-sm">Select a student to enter scores.</div>
-                ) : (
-                  <>
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <h3 className="font-display font-bold text-xl cs-text-navy">{selected.name}</h3>
-                        <div className="text-xs text-slate-500">{selected.class_name} · {term} · {year}</div>
-                      </div>
-                      <Button onClick={saveAll} disabled={saving} className="cs-bg-green text-white rounded-full hover:opacity-90" data-testid="save-scores"><Save size={16} className="mr-1" /> {saving ? "Saving…" : "Save"}</Button>
-                    </div>
-
-                    <Tabs defaultValue="academic" className="mt-6">
-                      <TabsList>
-                        <TabsTrigger value="academic">Academic scores</TabsTrigger>
-                        <TabsTrigger value="skills">Skill ratings</TabsTrigger>
-                      </TabsList>
-                      <TabsContent value="academic" className="mt-4">
-                        {subjectsForSelected.length === 0 && (
-                          <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded p-3 mb-3">No subjects assigned to {selected.class_name}. Ask the school admin to add subjects in their dashboard.</div>
-                        )}
-                        <div className="overflow-hidden rounded-lg border">
-                          <Table>
-                            <TableHeader>
-                              <TableRow className="cs-bg-navy hover:cs-bg-navy">
-                                <TableHead className="text-white">Subject</TableHead>
-                                <TableHead className="text-white w-32">CA (40)</TableHead>
-                                <TableHead className="text-white w-32">Exam (60)</TableHead>
-                                <TableHead className="text-white w-32">Total</TableHead>
-                              </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                              {subjectsForSelected.map((s) => {
-                                const v = scoreMap[s] || { ca: "", exam: "" };
-                                const total = (Number(v.ca) || 0) + (Number(v.exam) || 0);
-                                return (
-                                  <TableRow key={s}>
-                                    <TableCell className="font-medium">{s}</TableCell>
-                                    <TableCell><Input type="number" max={40} value={v.ca} onChange={(e) => setScoreMap({ ...scoreMap, [s]: { ...v, ca: e.target.value } })} data-testid={`ca-${s}`} /></TableCell>
-                                    <TableCell><Input type="number" max={60} value={v.exam} onChange={(e) => setScoreMap({ ...scoreMap, [s]: { ...v, exam: e.target.value } })} data-testid={`exam-${s}`} /></TableCell>
-                                    <TableCell><span className="font-semibold cs-text-navy">{total}</span></TableCell>
-                                  </TableRow>
-                                );
-                              })}
-                            </TableBody>
-                          </Table>
-                        </div>
-                      </TabsContent>
-                      <TabsContent value="skills" className="mt-4">
-                        <div className="grid grid-cols-2 gap-4">
-                          {SKILLS.map((sk) => (
-                            <div key={sk} className="cs-card p-4 flex items-center justify-between" data-testid={`skill-${sk}`}>
-                              <div className="text-sm font-medium cs-text-navy">{sk}</div>
-                              <StarRating value={skillMap[sk] || 0} onChange={(v) => setSkillMap({ ...skillMap, [sk]: v })} />
-                            </div>
-                          ))}
-                        </div>
-                      </TabsContent>
-                    </Tabs>
-                  </>
-                )}
-              </div>
-            </div>
-          </TabsContent>
-
-          <TabsContent value="cbt" className="mt-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-display font-semibold cs-text-navy text-lg">CBT exam library</h3>
-              <Button onClick={openCreateExam} className="cs-bg-green text-white hover:opacity-90 rounded-full" data-testid="cbt-new-exam"><Plus size={14} className="mr-1" /> New exam</Button>
-            </div>
-            <div className="cs-card overflow-hidden">
-              <Table>
-                <TableHeader>
-                  <TableRow className="cs-bg-navy hover:cs-bg-navy">
-                    <TableHead className="text-white">Title</TableHead>
-                    <TableHead className="text-white">Class</TableHead>
-                    <TableHead className="text-white">Subject</TableHead>
-                    <TableHead className="text-white">Term</TableHead>
-                    <TableHead className="text-white">Qs</TableHead>
-                    <TableHead className="text-white">Min</TableHead>
-                    <TableHead className="text-white">Status</TableHead>
-                    <TableHead className="text-white">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {exams.map((e, i) => (
-                    <TableRow key={e.id} className={i % 2 ? "bg-slate-50" : ""} data-testid={`exam-row-${e.id}`}>
-                      <TableCell className="font-medium">{e.title}</TableCell>
-                      <TableCell>{e.class_name}</TableCell>
-                      <TableCell>{e.subject}</TableCell>
-                      <TableCell>{e.term}</TableCell>
-                      <TableCell>{e.questions?.length}</TableCell>
-                      <TableCell>{e.duration_min}</TableCell>
-                      <TableCell>{e.published ? <Badge className="cs-bg-green text-white">Published</Badge> : <Badge className="bg-slate-400 text-white">Draft</Badge>}</TableCell>
-                      <TableCell>
-                        <div className="flex gap-2">
-                          <Button size="sm" variant="outline" onClick={() => openEditExam(e)} data-testid={`exam-edit-${e.id}`}>Edit</Button>
-                          <Button size="sm" className={e.published ? "bg-amber-500 text-white" : "cs-bg-blue text-white"} onClick={() => togglePublish(e)} data-testid={`exam-publish-${e.id}`}>{e.published ? "Unpublish" : "Publish"}</Button>
-                          <Button size="sm" variant="outline" onClick={() => setAttemptsDlg(e)} data-testid={`exam-attempts-${e.id}`}><Eye size={12} /></Button>
-                          <Button size="sm" variant="destructive" onClick={() => deleteExam(e.id)} data-testid={`exam-delete-${e.id}`}><Trash2 size={12} /></Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                  {!exams.length && (<TableRow><TableCell colSpan={8} className="text-center text-slate-500 py-8">No exams. Click <strong>New exam</strong> to create one.</TableCell></TableRow>)}
-                </TableBody>
-              </Table>
-            </div>
-          </TabsContent>
-
-          <TabsContent value="parents" className="mt-6">
-            <div className="cs-card p-6">
-              <div className="flex items-start gap-3 mb-4">
-                <div className="w-11 h-11 rounded-lg cs-bg-blue text-white flex items-center justify-center shrink-0"><Users size={20} /></div>
-                <div className="flex-1">
-                  <h3 className="font-display font-semibold cs-text-navy text-lg">Bulk upload parents for your class{myClasses.length > 1 ? "es" : ""}</h3>
-                  <p className="text-sm text-slate-500 mt-1">
-                    Class teacher: <strong className="cs-text-navy">{user?.name}</strong>
-                    {myClasses.length > 0 && <> · Assigned to <strong className="cs-text-navy">{myClasses.join(", ")}</strong></>}
-                  </p>
-                </div>
-              </div>
-              <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900 mb-4">
-                <div className="font-medium mb-1">How this works</div>
-                <ul className="list-disc ml-5 space-y-0.5 text-[13px]">
-                  <li>Download the parents template, fill in parent name + email + your students' names and class.</li>
-                  <li>Upload it back — the system creates the parent login accounts.</li>
-                  <li>Only the school admin can see the generated passwords — they distribute to parents securely.</li>
-                  <li>Rows pointing to students <em>not on your class roster</em> will be skipped (you'll see the reasons).</li>
-                </ul>
-              </div>
-              <Button onClick={() => setParentBulkOpen(true)} className="cs-bg-green text-white hover:opacity-90 btn-anim" data-testid="teacher-bulk-parents-btn" disabled={myClasses.length === 0}>
-                <FileSpreadsheet size={16} className="mr-2" /> Upload parents for {myClasses.length === 1 ? myClasses[0] : "my class"}
-              </Button>
-              {myClasses.length === 0 && (
-                <p className="text-xs text-amber-700 mt-2">⚠️ You don't have any assigned classes yet — ask your school admin to assign one.</p>
-              )}
-            </div>
-          </TabsContent>
-        </Tabs>
+  const SidebarContent = ({ onClickItem }) => (
+    <div className="h-full flex flex-col cs-bg-navy text-white">
+      <div className="p-3 border-b border-white/10 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <div className="w-9 h-9 rounded-md bg-white/10 flex items-center justify-center"><BadgeCheck size={18} /></div>
+          <div className="hidden lg:block leading-tight">
+            <div className="text-[10px] tracking-wider text-white/60 uppercase">Teacher</div>
+            <div className="text-xs font-semibold truncate max-w-[140px]">{user?.name || "—"}</div>
+          </div>
+        </div>
+        {drawerOpen && (
+          <button className="sm:hidden p-1.5 rounded text-white/80 hover:bg-white/10" onClick={() => setDrawerOpen(false)} aria-label="Close sidebar"><XIcon size={16} /></button>
+        )}
       </div>
+      <nav className="flex-1 overflow-y-auto p-2 space-y-1">
+        {NAV.map((n) => {
+          const Icon = n.I;
+          const active = tab === n.k;
+          return (
+            <button
+              key={n.k}
+              onClick={() => { onClickItem(n.k); setDrawerOpen(false); }}
+              className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-md text-xs transition-all duration-200 ${active ? "bg-white text-[#002147] shadow-sm font-semibold" : "text-white/85 hover:bg-white/10"}`}
+              data-testid={`teacher-nav-${n.k}`}
+              title={n.l}
+            >
+              <Icon size={15} className="flex-shrink-0" />
+              <span className="hidden lg:inline truncate flex-1 text-left">{n.l}</span>
+              {active && <ChevronRight size={12} className="hidden lg:inline" />}
+            </button>
+          );
+        })}
+        <div className="border-t border-white/10 my-2" />
+        <Button onClick={handleLogout} className="w-full bg-red-500/15 hover:bg-red-500/30 text-white rounded-md text-xs h-9 justify-start gap-2 border border-red-400/30 transition-all duration-200 px-2.5" data-testid="teacher-sidebar-logout">
+          <LogOut size={14} className="flex-shrink-0" /> <span className="hidden lg:inline">Logout</span>
+        </Button>
+      </nav>
+    </div>
+  );
+
+  if (!user) {
+    return (
+      <div className="min-h-screen">
+        <Navbar variant="dashboard" />
+        <div className="p-10 text-slate-500">Loading…</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-slate-50">
+      <Navbar variant="dashboard" />
+
+      {/* Pinned sidebar (desktop) */}
+      <aside className="hidden sm:flex flex-col fixed left-0 top-14 bottom-0 z-30 w-16 lg:w-64 xl:w-72 border-r shadow-sm transition-all duration-300" data-testid="teacher-sidebar-desktop">
+        <SidebarContent onClickItem={(k) => setTab(k)} />
+      </aside>
+
+      {/* Mobile drawer */}
+      {drawerOpen && (
+        <div className="sm:hidden fixed inset-0 z-40" data-testid="teacher-drawer">
+          <div className="absolute inset-0 bg-slate-900/60 transition-opacity duration-300" onClick={() => setDrawerOpen(false)} />
+          <aside className="absolute left-0 top-0 bottom-0 w-72 shadow-xl transition-transform duration-300">
+            <SidebarContent onClickItem={(k) => setTab(k)} />
+          </aside>
+        </div>
+      )}
+
+      <main className="sm:ml-16 lg:ml-64 xl:ml-72 pt-[120px] transition-all duration-300" data-testid="teacher-dashboard">
+        {/* Fixed in-page header */}
+        <div className="fixed top-14 left-0 sm:left-16 lg:left-64 xl:left-72 right-0 z-20 bg-slate-50 border-b border-slate-200 px-4 sm:px-6 lg:px-10 xl:px-12 py-3 transition-all duration-300">
+          <div className="max-w-[1800px] flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3 min-w-0">
+              <button className="sm:hidden p-2 rounded-md border border-slate-200 bg-white" onClick={() => setDrawerOpen(true)} data-testid="teacher-hamburger"><Menu size={18} /></button>
+              <div className="min-w-0">
+                <span className="eyebrow">TEACHER PORTAL</span>
+                <h1 className="font-display text-xl sm:text-2xl font-bold cs-text-navy mt-0.5 truncate" data-testid="teacher-title">
+                  {user?.name} · {currentLabel}
+                </h1>
+              </div>
+            </div>
+            <div className="hidden md:flex items-center gap-3 cs-card px-4 py-2 shrink-0" data-testid="teacher-header-user">
+              <div className="w-9 h-9 rounded-full cs-bg-navy text-white flex items-center justify-center font-bold text-xs flex-shrink-0">
+                {(user?.name || "?").split(" ").filter(Boolean).slice(0, 2).map((p) => p[0]?.toUpperCase()).join("")}
+              </div>
+              <div className="text-right leading-tight">
+                <div className="text-sm font-semibold cs-text-navy truncate max-w-[200px]" data-testid="teacher-header-name">{user?.name}</div>
+                <div className="text-[10px] uppercase tracking-wider text-slate-500" data-testid="teacher-header-role">
+                  Teacher{isClassTeacher ? " · Class teacher" : ""}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="px-4 sm:px-6 lg:px-10 xl:px-12 py-6 max-w-[1800px]">
+          {/* Status chip row */}
+          <div className="flex flex-wrap items-center gap-3 mb-6">
+            <Badge className="cs-bg-green text-white">Active</Badge>
+            <div className="text-xs cs-card px-3 py-1.5 flex items-center gap-2">
+              <span className="font-semibold cs-text-navy">{school?.name || "—"}</span>
+              {myClasses.length > 0 && <>
+                <span className="text-slate-400">·</span>
+                <span className="text-slate-500">{myClasses.length === 1 ? "Class" : "Classes"}: <strong className="cs-text-navy">{myClasses.join(", ")}</strong></span>
+              </>}
+            </div>
+            <div className="text-xs text-slate-500 truncate">{term} · {year}</div>
+          </div>
+
+          <Tabs value={tab} onValueChange={setTab}>
+            <TabsList className="hidden">
+              <TabsTrigger value="overview">Overview</TabsTrigger>
+              <TabsTrigger value="scores">Scores</TabsTrigger>
+              <TabsTrigger value="cbt">CBT</TabsTrigger>
+              {isClassTeacher && <TabsTrigger value="reports">Reports</TabsTrigger>}
+            </TabsList>
+
+            {/* ---------------- OVERVIEW ---------------- */}
+            <TabsContent value="overview" className="cs-pane-fade">
+              {/* KPI tiles */}
+              <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                {[
+                  { i: Users, l: "My class students", v: myClassStudents.length, c: "cs-bg-navy" },
+                  { i: BookOpen, l: "Assigned classes", v: myClasses.length, c: "cs-bg-blue" },
+                  { i: FileBarChart, l: "Exams created", v: exams.length, c: "cs-bg-green" },
+                  { i: GraduationCap, l: "Published exams", v: publishedExams, c: "bg-amber-500" },
+                ].map((s, i) => {
+                  const Icon = s.i;
+                  return (
+                    <div key={i} className="cs-card p-5 flex items-center gap-4" data-testid={`teacher-stat-${i}`}>
+                      <div className={`w-11 h-11 rounded-lg ${s.c} text-white flex items-center justify-center`}><Icon size={20} /></div>
+                      <div>
+                        <div className="text-xs text-slate-500">{s.l}</div>
+                        <div className="font-display text-2xl font-bold cs-text-navy">{s.v}</div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="grid md:grid-cols-2 gap-6">
+                {/* Quick actions */}
+                <div className="cs-card p-6" data-testid="teacher-quick-actions">
+                  <h3 className="font-display font-semibold cs-text-navy text-lg">Quick actions</h3>
+                  <p className="text-sm text-slate-500 mt-1">Jump straight to the work you do most.</p>
+                  <div className="mt-4 space-y-2">
+                    <Button onClick={() => setTab("scores")} className="w-full justify-start cs-bg-navy text-white hover:opacity-90" data-testid="qa-open-scores">
+                      <ClipboardList size={16} className="mr-2" /> Enter scores & skill ratings
+                    </Button>
+                    <Button onClick={() => { setTab("cbt"); openCreateExam(); }} className="w-full justify-start cs-bg-green text-white hover:opacity-90" data-testid="qa-new-exam">
+                      <Plus size={16} className="mr-2" /> Create a CBT exam
+                    </Button>
+                    <Button onClick={() => setTab("cbt")} variant="outline" className="w-full justify-start" data-testid="qa-view-exams">
+                      <Eye size={16} className="mr-2" /> View CBT results & attempts
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Parents bulk upload — class teacher only */}
+                <div className="cs-card p-6" data-testid="teacher-parents-card">
+                  <div className="flex items-start gap-3">
+                    <div className="w-11 h-11 rounded-lg cs-bg-blue text-white flex items-center justify-center shrink-0"><Users size={20} /></div>
+                    <div className="flex-1">
+                      <h3 className="font-display font-semibold cs-text-navy text-lg">
+                        Bulk upload parents{myClasses.length > 0 ? ` for ${myClasses.length === 1 ? "your class" : "your classes"}` : ""}
+                      </h3>
+                      <p className="text-sm text-slate-500 mt-1">
+                        {isClassTeacher
+                          ? <>Class teacher: <strong className="cs-text-navy">{user?.name}</strong>{myClasses.length > 0 && <> · <strong className="cs-text-navy">{myClasses.join(", ")}</strong></>}</>
+                          : <>This feature is available to class teachers only.</>}
+                      </p>
+                    </div>
+                  </div>
+                  {isClassTeacher && (
+                    <>
+                      <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs text-blue-900 mt-4">
+                        <div className="font-medium mb-1">How this works</div>
+                        <ul className="list-disc ml-5 space-y-0.5">
+                          <li>Download the parents template, fill parent name + email + students' names and class.</li>
+                          <li>Upload — the system creates parent login accounts.</li>
+                          <li>Only the school admin can see the generated passwords.</li>
+                          <li>Rows pointing to students not on your roster are skipped.</li>
+                        </ul>
+                      </div>
+                      <Button
+                        onClick={() => setParentBulkOpen(true)}
+                        className="cs-bg-green text-white hover:opacity-90 btn-anim mt-4"
+                        data-testid="teacher-bulk-parents-btn"
+                        disabled={myClasses.length === 0}
+                      >
+                        <FileSpreadsheet size={16} className="mr-2" /> Upload parents for {myClasses.length === 1 ? myClasses[0] : "my class"}
+                      </Button>
+                      {myClasses.length === 0 && (
+                        <p className="text-xs text-amber-700 mt-2">You don't have any assigned classes yet — ask your school admin to assign one.</p>
+                      )}
+                    </>
+                  )}
+                </div>
+              </div>
+            </TabsContent>
+
+            {/* ---------------- SCORES PANEL ---------------- */}
+            <TabsContent value="scores" className="cs-pane-fade">
+              <div className="cs-card p-5 grid sm:grid-cols-3 gap-4">
+                <div>
+                  <Label>Class</Label>
+                  <Select value={classFilter} onValueChange={(v) => setClassFilter(v === "__all__" ? "" : v)}>
+                    <SelectTrigger data-testid="class-filter"><SelectValue placeholder="All classes" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__all__">All</SelectItem>
+                      {classes.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label>Term</Label>
+                  <Select value={term} onValueChange={setTerm}>
+                    <SelectTrigger data-testid="term-select"><SelectValue /></SelectTrigger>
+                    <SelectContent>{TERMS.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label>Academic year</Label>
+                  <Input value={year} onChange={(e) => setYear(e.target.value)} data-testid="year-input" />
+                </div>
+              </div>
+
+              <div className="mt-6 grid lg:grid-cols-[320px_1fr] gap-6">
+                <div className="cs-card p-2 max-h-[600px] overflow-auto">
+                  <h3 className="px-3 py-2 font-semibold cs-text-navy text-sm">Roster ({filtered.length})</h3>
+                  <div className="divide-y">
+                    {filtered.map((s) => (
+                      <button
+                        key={s.id}
+                        onClick={() => loadStudentScores(s)}
+                        className={`w-full text-left px-3 py-3 hover:bg-slate-50 transition ${selected?.id === s.id ? "bg-slate-50" : ""}`}
+                        data-testid={`roster-${s.id}`}
+                      >
+                        <div className="font-medium cs-text-navy text-sm">{s.name}</div>
+                        <div className="text-xs text-slate-500">{s.class_name} · {s.gender}</div>
+                      </button>
+                    ))}
+                    {!filtered.length && <div className="p-6 text-sm text-slate-500">No students.</div>}
+                  </div>
+                </div>
+
+                <div className="cs-card p-6">
+                  {!selected ? (
+                    <div className="text-slate-500 text-sm">Select a student to enter scores.</div>
+                  ) : (
+                    <>
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h3 className="font-display font-bold text-xl cs-text-navy">{selected.name}</h3>
+                          <div className="text-xs text-slate-500">{selected.class_name} · {term} · {year}</div>
+                        </div>
+                        <Button onClick={saveAll} disabled={saving} className="cs-bg-green text-white rounded-full hover:opacity-90" data-testid="save-scores"><Save size={16} className="mr-1" /> {saving ? "Saving…" : "Save"}</Button>
+                      </div>
+
+                      <Tabs defaultValue="academic" className="mt-6">
+                        <TabsList>
+                          <TabsTrigger value="academic">Academic scores</TabsTrigger>
+                          <TabsTrigger value="skills">Skill ratings</TabsTrigger>
+                        </TabsList>
+                        <TabsContent value="academic" className="mt-4">
+                          {subjectsForSelected.length === 0 && (
+                            <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded p-3 mb-3">No subjects assigned to {selected.class_name}. Ask the school admin to add subjects in their dashboard.</div>
+                          )}
+                          <div className="overflow-hidden rounded-lg border">
+                            <Table>
+                              <TableHeader>
+                                <TableRow className="cs-bg-navy hover:cs-bg-navy">
+                                  <TableHead className="text-white">Subject</TableHead>
+                                  <TableHead className="text-white w-32">CA (40)</TableHead>
+                                  <TableHead className="text-white w-32">Exam (60)</TableHead>
+                                  <TableHead className="text-white w-32">Total</TableHead>
+                                </TableRow>
+                              </TableHeader>
+                              <TableBody>
+                                {subjectsForSelected.map((s) => {
+                                  const v = scoreMap[s] || { ca: "", exam: "" };
+                                  const total = (Number(v.ca) || 0) + (Number(v.exam) || 0);
+                                  return (
+                                    <TableRow key={s}>
+                                      <TableCell className="font-medium">{s}</TableCell>
+                                      <TableCell><Input type="number" max={40} value={v.ca} onChange={(e) => setScoreMap({ ...scoreMap, [s]: { ...v, ca: e.target.value } })} data-testid={`ca-${s}`} /></TableCell>
+                                      <TableCell><Input type="number" max={60} value={v.exam} onChange={(e) => setScoreMap({ ...scoreMap, [s]: { ...v, exam: e.target.value } })} data-testid={`exam-${s}`} /></TableCell>
+                                      <TableCell><span className="font-semibold cs-text-navy">{total}</span></TableCell>
+                                    </TableRow>
+                                  );
+                                })}
+                              </TableBody>
+                            </Table>
+                          </div>
+                        </TabsContent>
+                        <TabsContent value="skills" className="mt-4">
+                          <div className="grid grid-cols-2 gap-4">
+                            {SKILLS.map((sk) => (
+                              <div key={sk} className="cs-card p-4 flex items-center justify-between" data-testid={`skill-${sk}`}>
+                                <div className="text-sm font-medium cs-text-navy">{sk}</div>
+                                <StarRating value={skillMap[sk] || 0} onChange={(v) => setSkillMap({ ...skillMap, [sk]: v })} />
+                              </div>
+                            ))}
+                          </div>
+                        </TabsContent>
+                      </Tabs>
+                    </>
+                  )}
+                </div>
+              </div>
+            </TabsContent>
+
+            {/* ---------------- CBT RESULTS ---------------- */}
+            <TabsContent value="cbt" className="cs-pane-fade">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-display font-semibold cs-text-navy text-lg">CBT exam library</h3>
+                <Button onClick={openCreateExam} className="cs-bg-green text-white hover:opacity-90 rounded-full" data-testid="cbt-new-exam"><Plus size={14} className="mr-1" /> New exam</Button>
+              </div>
+              <div className="cs-card overflow-hidden">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="cs-bg-navy hover:cs-bg-navy">
+                      <TableHead className="text-white">Title</TableHead>
+                      <TableHead className="text-white">Class</TableHead>
+                      <TableHead className="text-white">Subject</TableHead>
+                      <TableHead className="text-white">Term</TableHead>
+                      <TableHead className="text-white">Qs</TableHead>
+                      <TableHead className="text-white">Min</TableHead>
+                      <TableHead className="text-white">Status</TableHead>
+                      <TableHead className="text-white">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {exams.map((e, i) => (
+                      <TableRow key={e.id} className={i % 2 ? "bg-slate-50" : ""} data-testid={`exam-row-${e.id}`}>
+                        <TableCell className="font-medium">{e.title}</TableCell>
+                        <TableCell>{e.class_name}</TableCell>
+                        <TableCell>{e.subject}</TableCell>
+                        <TableCell>{e.term}</TableCell>
+                        <TableCell>{e.questions?.length}</TableCell>
+                        <TableCell>{e.duration_min}</TableCell>
+                        <TableCell>{e.published ? <Badge className="cs-bg-green text-white">Published</Badge> : <Badge className="bg-slate-400 text-white">Draft</Badge>}</TableCell>
+                        <TableCell>
+                          <div className="flex gap-2">
+                            <Button size="sm" variant="outline" onClick={() => openEditExam(e)} data-testid={`exam-edit-${e.id}`}>Edit</Button>
+                            <Button size="sm" className={e.published ? "bg-amber-500 text-white" : "cs-bg-blue text-white"} onClick={() => togglePublish(e)} data-testid={`exam-publish-${e.id}`}>{e.published ? "Unpublish" : "Publish"}</Button>
+                            <Button size="sm" variant="outline" onClick={() => setAttemptsDlg(e)} data-testid={`exam-attempts-${e.id}`}><Eye size={12} /></Button>
+                            <Button size="sm" variant="destructive" onClick={() => deleteExam(e.id)} data-testid={`exam-delete-${e.id}`}><Trash2 size={12} /></Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    {!exams.length && (<TableRow><TableCell colSpan={8} className="text-center text-slate-500 py-8">No exams. Click <strong>New exam</strong> to create one.</TableCell></TableRow>)}
+                  </TableBody>
+                </Table>
+              </div>
+            </TabsContent>
+
+            {/* ---------------- MY CLASS REPORTS (class teacher only) ---------------- */}
+            {isClassTeacher && (
+              <TabsContent value="reports" className="cs-pane-fade">
+                <div className="cs-card p-6" data-testid="teacher-reports-stub">
+                  <div className="flex items-start gap-3 mb-4">
+                    <div className="w-11 h-11 rounded-lg cs-bg-navy text-white flex items-center justify-center shrink-0"><GraduationCap size={20} /></div>
+                    <div>
+                      <h3 className="font-display font-semibold cs-text-navy text-lg">My Class Reports</h3>
+                      <p className="text-sm text-slate-500 mt-1">
+                        Class teacher view{myClasses.length > 0 && <> · <strong className="cs-text-navy">{myClasses.join(", ")}</strong></>}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50/60 p-8 text-center">
+                    <div className="text-sm font-semibold cs-text-navy">Broadsheet & class report cards — coming in Tier 2</div>
+                    <p className="text-xs text-slate-500 mt-2 max-w-md mx-auto">
+                      This tab is reserved for class-teacher-only features: termly broadsheet, per-student report cards,
+                      attendance summary and class teacher's comment workflow.
+                    </p>
+                  </div>
+                </div>
+              </TabsContent>
+            )}
+          </Tabs>
+        </div>
+      </main>
 
       <BulkUploadDialog
         open={parentBulkOpen}
@@ -503,7 +723,7 @@ export default function TeacherDashboard() {
                   {q.image_url ? (
                     <div className="relative">
                       <img src={q.image_url} alt="" className="h-20 w-20 object-cover rounded border" />
-                      <button type="button" onClick={() => updateQuestion(qi, { image_url: "" })} className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-0.5" data-testid={`ex-q-img-remove-${qi}`}><X size={12} /></button>
+                      <button type="button" onClick={() => updateQuestion(qi, { image_url: "" })} className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-0.5" data-testid={`ex-q-img-remove-${qi}`}><XIcon size={12} /></button>
                     </div>
                   ) : (
                     <label className="inline-flex items-center gap-2 px-3 py-2 rounded-md border border-dashed border-slate-300 text-xs text-slate-600 cursor-pointer hover:bg-slate-50">
@@ -537,7 +757,7 @@ export default function TeacherDashboard() {
                           <Input value={opt} onChange={(e) => updateOption(qi, oi, e.target.value)} placeholder={`Option ${String.fromCharCode(65 + oi)}`} data-testid={`ex-q-opt-${qi}-${oi}`} />
                           {q.options.length > 2 && (
                             <button type="button" onClick={() => removeOption(qi, oi)} className="text-slate-400 hover:text-red-500 p-1" title="Remove option" data-testid={`ex-q-opt-remove-${qi}-${oi}`}>
-                              <X size={14} />
+                              <XIcon size={14} />
                             </button>
                           )}
                         </div>

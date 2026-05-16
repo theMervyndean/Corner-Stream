@@ -28,6 +28,8 @@ class UserCreateIn(BaseModel):
     username: Optional[str] = Field(default=None, pattern=r"^[a-zA-Z0-9_]{3,30}$")
     assigned_class: Optional[str] = None
     assigned_classes: Optional[List[str]] = None
+    assigned_subjects: Optional[List[str]] = None
+    is_class_teacher: Optional[bool] = None
     school_role: Optional[str] = None
 
 
@@ -35,6 +37,8 @@ class UserUpdateIn(BaseModel):
     name: Optional[str] = None
     assigned_class: Optional[str] = None
     assigned_classes: Optional[List[str]] = None
+    assigned_subjects: Optional[List[str]] = None
+    is_class_teacher: Optional[bool] = None
     school_role: Optional[str] = None
     password: Optional[str] = None
     username: Optional[str] = Field(default=None, pattern=r"^[a-zA-Z0-9_]{3,30}$")
@@ -135,6 +139,10 @@ async def create_user(payload: UserCreateIn, user: dict = Depends(require_roles(
         elif payload.assigned_class:
             doc["assigned_classes"] = [payload.assigned_class]
             doc["assigned_class"] = payload.assigned_class
+        if payload.assigned_subjects:
+            doc["assigned_subjects"] = payload.assigned_subjects
+        if payload.is_class_teacher is not None:
+            doc["is_class_teacher"] = bool(payload.is_class_teacher)
         if payload.school_role:
             doc["school_role"] = payload.school_role
     await db.users.insert_one(doc)
@@ -160,6 +168,8 @@ async def update_user(user_id: str, payload: UserUpdateIn, user: dict = Depends(
     if payload.name: update["name"] = payload.name
     if payload.assigned_class is not None: update["assigned_class"] = payload.assigned_class
     if payload.assigned_classes is not None: update["assigned_classes"] = payload.assigned_classes
+    if payload.assigned_subjects is not None: update["assigned_subjects"] = payload.assigned_subjects
+    if payload.is_class_teacher is not None: update["is_class_teacher"] = bool(payload.is_class_teacher)
     if payload.school_role is not None: update["school_role"] = payload.school_role
     if payload.password:
         update["password_hash"] = hash_password(payload.password)

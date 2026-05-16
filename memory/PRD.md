@@ -6,6 +6,37 @@ Corner Streams is a SaaS for Nigerian schools — "Taking away the paper trap." 
 Brand: Deep Navy #002147, Vibrant Green #28A745, Electric Blue #0056B3.
 
 
+
+## Latest session (Feb 2026 — TeacherDashboard Tier 1 scaffold)
+Replicated the SuperAdmin / SchoolAdmin shell architecture for the Teacher portal and laid the foundation for role-based class-teacher features.
+
+### Backend additions (`/app/backend/routers/users.py`, `/app/backend/routers/auth.py`)
+- Extended `UserCreateIn` & `UserUpdateIn`: added `assigned_subjects: Optional[List[str]]` and `is_class_teacher: Optional[bool]`.
+- `create_user` and `update_user` now persist these fields when present.
+- `_user_public()` in `auth.py` returns `assigned_subjects` and `is_class_teacher` so the frontend gating logic works.
+
+### Frontend (`/app/frontend/src/pages/TeacherDashboard.jsx`)
+- Full shell rewrite to match SchoolAdmin: pinned left sidebar (`cs-bg-navy`, `lg:w-64 xl:w-72`, only inner nav scrolls), fixed in-page header below the global Navbar, mobile drawer with hamburger.
+- Top-right identity card shows avatar + name + "Teacher · Class teacher" (when applicable).
+- Sidebar nav: **Overview** / **Scores Panel** / **CBT Results** / **My Class Reports** (4th tab gated by `user.is_class_teacher === true` OR legacy `assigned_classes.length > 0`).
+- Logout grouped inside the sidebar nav (red-tinted button, `data-testid="teacher-sidebar-logout"`).
+- **Overview**: 4 KPI tiles (my class students, assigned classes, exams created, published exams) + Quick Actions card + Parents bulk-upload card (class-teacher only, moved here per user choice).
+- **Scores Panel**: unchanged behaviour — class filter, term, year, roster, academic scores & skills tabs, save endpoint.
+- **CBT Results**: unchanged exam library + builder dialog + attempts dialog.
+- **My Class Reports**: stub placeholder for Tier 2 (broadsheet + per-student report cards + class-teacher comment).
+- Animations: each tab wrapped in `cs-pane-fade` for smooth tab transitions.
+
+### Verified via screenshot
+Logged in as `teacher@demo.school` / `Teacher@123` → Overview / Scores Panel / My Class Reports all render correctly with fixed sidebar+header, KPI tiles populated (4 students · JSS 1 · 1 exam · 1 published), Tier 2 reports stub visible because demo teacher has `assigned_classes: ["JSS 1"]`. Lint clean.
+
+### Tier 2 backlog (next)
+- Class-teacher broadsheet endpoint + UI (per-class CA/Exam/Total/Avg table)
+- Per-student report card preview from teacher side
+- Attendance summary + class-teacher comment workflow
+- Teacher scoping on `/students` and `/scores` (only return rows for assigned classes)
+- Exam approval workflow: teacher submit → pending_review → admin approve → published
+
+
 ## Latest session (May 2026 — SuperAdmin shell refresh)
 Pulled latest code from GitHub branch `corner-streams` (the auto-saved branch). All 7 SuperAdmin shell tasks done:
 1. **Pinned sidebar** — `fixed left-0 top-14 bottom-0` with `flex flex-col h-full`; only the inner `<nav>` scrolls.
