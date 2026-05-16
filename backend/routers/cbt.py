@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, model_validator
 from typing import List, Optional, Literal
 from db import get_db, new_id, now_iso, _calc_grade, allows_true_false
-from auth_utils import get_current_user, require_roles
+from auth_utils import get_current_user, require_roles, teacher_assigned_classes, is_scoped_teacher
 from audit_log import log_event, EVENT_EXAM_CREATED, EVENT_EXAM_PUBLISHED, EVENT_ATTEMPT_SUBMITTED
 
 router = APIRouter(prefix="/cbt", tags=["cbt"])
@@ -64,6 +64,22 @@ class SubmitIn(BaseModel):
 
 
 # ---------- Helpers ----------
+def _resolve_status(exam: dict) -> str:
+    """Read-time backfill: infer status for legacy exams without the field.
+    - Explicit status wins
+    - Legacy: published:true → 'published', else 'draft'
+    """
+    s = exam.get("status")
+    if s in ("draft", "pending_review", "published"):
+        return s
+    return "published" if exam.get("published") else "draft"
+
+
+def _decorate_status(exam: dict) -> dict:
+    exam["status"] = _resolve_status(exam)
+    return exam
+
+
 def _strip_correct(exam: dict) -> dict:
     out = {**exam}
     out["questions"] = [
@@ -151,6 +167,7 @@ async def create_exam(payload: ExamIn, user: dict = Depends(require_roles("teach
         "duration_min": payload.duration_min,
         "questions": [q.model_dump() for q in payload.questions],
         "published": False,
+        "status": "draft",
         "created_by": user["id"],
         "created_at": now_iso(),
     }
@@ -169,6 +186,7 @@ async def create_exam(payload: ExamIn, user: dict = Depends(require_roles("teach
 @router.get("/exams")
 async def list_exams(class_name: Optional[str] = None, subject: Optional[str] = None,
                      term: Optional[str] = None, published_only: bool = False,
+                     status: Optional[str] = None,
                      user: dict = Depends(get_current_user)):
     db = get_db()
     if user["role"] == "super_admin":
@@ -182,7 +200,18 @@ async def list_exams(class_name: Optional[str] = None, subject: Optional[str] = 
         q["class_name"] = student["class_name"]
         q["published"] = True
     else:
-        if class_name:
+        # Teacher scoping: restrict to assigned classes
+        if is_scoped_teacher(user):
+            classes = teacher_assigned_classes(user)
+            if not classes:
+                return {"exams": []}
+            if class_name:
+                if class_name not in classes:
+                    return {"exams": []}
+                q["class_name"] = class_name
+            else:
+                q["class_name"] = {"$in": classes}
+        elif class_name:
             q["class_name"] = class_name
         if subject:
             q["subject"] = subject
@@ -191,6 +220,11 @@ async def list_exams(class_name: Optional[str] = None, subject: Optional[str] = 
         if published_only:
             q["published"] = True
     exams = await db.cbt_exams.find(q, {"_id": 0}).sort("created_at", -1).to_list(500)
+    # Decorate every exam with resolved status (handles legacy docs)
+    exams = [_decorate_status(e) for e in exams]
+    # Optional client-side filter by status (after decoration so legacy rows match too)
+    if status and user["role"] != "student":
+        exams = [e for e in exams if e["status"] == status]
     # For students: strip correct_idx; also append attempt status
     if user["role"] == "student":
         student = await _student_record_for_user(db, user)
@@ -238,14 +272,62 @@ async def update_exam(exam_id: str, payload: ExamUpdate,
         raise HTTPException(status_code=404, detail="Exam not found")
     if user["role"] != "super_admin" and exam["school_id"] != user.get("school_id"):
         raise HTTPException(status_code=403, detail="Forbidden")
+    # Scoped teacher can only edit exams for their assigned classes
+    if is_scoped_teacher(user) and exam.get("class_name") not in teacher_assigned_classes(user):
+        raise HTTPException(status_code=403, detail="Exam not in your assigned classes")
     update = {k: v for k, v in payload.model_dump().items() if v is not None}
     if "questions" in update:
         # Re-validate true/false rule against school type
         await _enforce_question_type_rules(db, exam["school_id"], update["questions"])
         update["questions"] = [q if isinstance(q, dict) else q.model_dump() for q in update["questions"]]
+    # Approval workflow: translate `published` flag into status.
+    if "published" in update:
+        wants_publish = bool(update["published"])
+        if wants_publish:
+            if is_scoped_teacher(user):
+                # Teacher cannot publish directly — submit for review instead
+                update["status"] = "pending_review"
+                update["published"] = False
+                update["submitted_for_review_at"] = now_iso()
+                update["submitted_by"] = user.get("id")
+            else:
+                # Admin / super_admin can publish directly
+                update["status"] = "published"
+        else:
+            # Unpublish → back to draft (admin and teacher both)
+            update["status"] = "draft"
     update["updated_at"] = now_iso()
     await db.cbt_exams.update_one({"id": exam_id}, {"$set": update})
-    return {"exam": {**exam, **update}}
+    merged = {**exam, **update}
+    return {"exam": _decorate_status(merged)}
+
+
+@router.post("/exams/{exam_id}/approve")
+async def approve_exam(exam_id: str, user: dict = Depends(require_roles("school_admin", "super_admin"))):
+    """One-click approval — sets status=published and published=true atomically."""
+    db = get_db()
+    exam = await db.cbt_exams.find_one({"id": exam_id}, {"_id": 0})
+    if not exam:
+        raise HTTPException(status_code=404, detail="Exam not found")
+    if user["role"] != "super_admin" and exam["school_id"] != user.get("school_id"):
+        raise HTTPException(status_code=403, detail="Forbidden")
+    update = {
+        "status": "published",
+        "published": True,
+        "approved_at": now_iso(),
+        "approved_by": user.get("id"),
+        "updated_at": now_iso(),
+    }
+    await db.cbt_exams.update_one({"id": exam_id}, {"$set": update})
+    await log_event(
+        school_id=exam["school_id"], event_type=EVENT_EXAM_PUBLISHED,
+        actor_id=user.get("id"), actor_name=user.get("name"), actor_role=user.get("role"),
+        summary=f"Exam approved & published: {exam.get('title')} ({exam.get('class_name')} · {exam.get('subject')})",
+        details={"exam_id": exam_id, "title": exam.get("title"),
+                 "class_name": exam.get("class_name"), "subject": exam.get("subject"),
+                 "previous_status": _resolve_status(exam)},
+    )
+    return {"exam": _decorate_status({**exam, **update})}
 
 
 @router.delete("/exams/{exam_id}")
@@ -256,6 +338,8 @@ async def delete_exam(exam_id: str, user: dict = Depends(require_roles("teacher"
         raise HTTPException(status_code=404, detail="Exam not found")
     if user["role"] != "super_admin" and exam["school_id"] != user.get("school_id"):
         raise HTTPException(status_code=403, detail="Forbidden")
+    if is_scoped_teacher(user) and exam.get("class_name") not in teacher_assigned_classes(user):
+        raise HTTPException(status_code=403, detail="Exam not in your assigned classes")
     await db.cbt_exams.delete_one({"id": exam_id})
     await db.cbt_attempts.delete_many({"exam_id": exam_id})
     return {"ok": True}
@@ -266,7 +350,7 @@ async def delete_exam(exam_id: str, user: dict = Depends(require_roles("teacher"
 async def start_attempt(exam_id: str, user: dict = Depends(require_roles("student"))):
     db = get_db()
     exam = await db.cbt_exams.find_one({"id": exam_id}, {"_id": 0})
-    if not exam or not exam.get("published"):
+    if not exam or _resolve_status(exam) != "published":
         raise HTTPException(status_code=404, detail="Exam not available")
     student = await _student_record_for_user(db, user)
     if not student:

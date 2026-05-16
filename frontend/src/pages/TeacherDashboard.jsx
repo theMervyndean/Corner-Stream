@@ -247,8 +247,12 @@ export default function TeacherDashboard() {
 
   const togglePublish = async (e) => {
     try {
-      await api.put(`/cbt/exams/${e.id}`, { published: !e.published });
-      toast.success(!e.published ? "Published" : "Unpublished");
+      const { data } = await api.put(`/cbt/exams/${e.id}`, { published: !e.published });
+      const newStatus = data?.exam?.status;
+      const msg = newStatus === "pending_review" ? "Submitted for review"
+        : newStatus === "published" ? "Published"
+        : "Moved to draft";
+      toast.success(msg);
       refresh();
     } catch (err) { toast.error(formatApiError(err.response?.data?.detail) || err.message); }
   };
@@ -601,7 +605,17 @@ export default function TeacherDashboard() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {exams.map((e, i) => (
+                    {exams.map((e, i) => {
+                      const status = e.status || (e.published ? "published" : "draft");
+                      const statusBadge = status === "published"
+                        ? <Badge className="cs-bg-green text-white">Published</Badge>
+                        : status === "pending_review"
+                          ? <Badge className="bg-amber-500 text-white">Pending review</Badge>
+                          : <Badge className="bg-slate-400 text-white">Draft</Badge>;
+                      const submitLabel = status === "pending_review" ? "Withdraw" : status === "published" ? "Unpublish" : "Submit for review";
+                      const submitClass = status === "pending_review" || status === "published" ? "bg-amber-500 text-white" : "cs-bg-blue text-white";
+                      const submitAction = () => togglePublish({ ...e, published: status === "published" || status === "pending_review" });
+                      return (
                       <TableRow key={e.id} className={i % 2 ? "bg-slate-50" : ""} data-testid={`exam-row-${e.id}`}>
                         <TableCell className="font-medium">{e.title}</TableCell>
                         <TableCell>{e.class_name}</TableCell>
@@ -609,17 +623,18 @@ export default function TeacherDashboard() {
                         <TableCell>{e.term}</TableCell>
                         <TableCell>{e.questions?.length}</TableCell>
                         <TableCell>{e.duration_min}</TableCell>
-                        <TableCell>{e.published ? <Badge className="cs-bg-green text-white">Published</Badge> : <Badge className="bg-slate-400 text-white">Draft</Badge>}</TableCell>
+                        <TableCell>{statusBadge}</TableCell>
                         <TableCell>
                           <div className="flex gap-2">
                             <Button size="sm" variant="outline" onClick={() => openEditExam(e)} data-testid={`exam-edit-${e.id}`}>Edit</Button>
-                            <Button size="sm" className={e.published ? "bg-amber-500 text-white" : "cs-bg-blue text-white"} onClick={() => togglePublish(e)} data-testid={`exam-publish-${e.id}`}>{e.published ? "Unpublish" : "Publish"}</Button>
+                            <Button size="sm" className={submitClass} onClick={submitAction} data-testid={`exam-publish-${e.id}`}>{submitLabel}</Button>
                             <Button size="sm" variant="outline" onClick={() => setAttemptsDlg(e)} data-testid={`exam-attempts-${e.id}`}><Eye size={12} /></Button>
                             <Button size="sm" variant="destructive" onClick={() => deleteExam(e.id)} data-testid={`exam-delete-${e.id}`}><Trash2 size={12} /></Button>
                           </div>
                         </TableCell>
                       </TableRow>
-                    ))}
+                      );
+                    })}
                     {!exams.length && (<TableRow><TableCell colSpan={8} className="text-center text-slate-500 py-8">No exams. Click <strong>New exam</strong> to create one.</TableCell></TableRow>)}
                   </TableBody>
                 </Table>

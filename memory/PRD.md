@@ -7,6 +7,73 @@ Brand: Deep Navy #002147, Vibrant Green #28A745, Electric Blue #0056B3.
 
 
 
+## Latest session (Feb 2026 — Teacher Scoping + Exam Approval Workflow)
+Streamlined pass: enforced server-side scoping for teachers and shipped a 3-state CBT approval workflow with one-click admin approval.
+
+### Backend
+**`auth_utils.py`** — Added shared helpers:
+- `teacher_assigned_classes(user)` returns the list of class names a teacher is assigned to (handles both `assigned_classes` array and legacy `assigned_class` single value).
+- `is_scoped_teacher(user)` returns `True` only when role == "teacher" AND `is_admin` is falsy (promoted teachers bypass scoping).
+
+**`routers/students.py`** — `_scope_filter()` now adds `{class_name: {$in: assigned_classes}}` when `is_scoped_teacher`. Teachers with no assignment see zero students. `list_students` validates any requested `class_name` is in the allowed set before returning.
+
+**`routers/scores.py`** — Added `_block_if_outside_teacher_classes()` helper. Applied in `list_scores` (raises 403), `upsert_scores` (silently skips ineligible rows in a batch), and `upsert_skill` (raises 403).
+
+**`routers/cbt.py`** — Approval workflow:
+- New `status` field with three values: `draft / pending_review / published`. New exams stamped `draft`.
+- `_resolve_status(exam)` reads legacy docs safely: explicit `status` wins, else `published:true → "published"`, else `"draft"`. Zero data migration needed.
+- `_decorate_status(exam)` attaches the resolved status to every API response.
+- `update_exam` translates the legacy `published` flag into a status change:
+  - Scoped teacher + `published:true` → `status="pending_review"`, `published=false`, stamps `submitted_for_review_at` + `submitted_by`.
+  - Admin/super_admin + `published:true` → direct publish (`status="published"`).
+  - Any role + `published:false` → `status="draft"`.
+- **New endpoint** `POST /cbt/exams/{exam_id}/approve` (school_admin/super_admin) — one-click: atomically sets `status="published"`, `published=true`, `approved_at`, `approved_by`, and emits `EVENT_EXAM_PUBLISHED` audit event.
+- `start_attempt` now gates on `_resolve_status(exam) == "published"` instead of the raw `published` flag.
+- `delete_exam` and `update_exam` now block scoped teachers from touching exams in classes they aren't assigned to.
+- `list_exams` accepts optional `?status=` filter (post-decoration so legacy rows match) and applies teacher class scoping when applicable.
+
+### Frontend
+**`TeacherDashboard.jsx`** — CBT table:
+- Status column now shows three badges: `Draft` (slate) / `Pending review` (amber) / `Published` (green).
+- Action button label changes contextually: `Submit for review` (when draft) / `Withdraw` (when pending) / `Unpublish` (when published).
+- `togglePublish` toast now reads back the new `status` and displays the appropriate message.
+
+**`SchoolAdminDashboard.jsx`** — Overview tab:
+- New `CBT exam approvals` card next to Quick Actions.
+- Shows amber `{N} pending` badge or slate `0 pending`.
+- Lists up to 6 pending exams (title, class, subject, term, Qs) with a green `Approve & publish` button each. Spillover footer for more than 6.
+- `approveExam()` calls `POST /cbt/exams/{id}/approve` and refreshes.
+- `refresh()` fetches `/cbt/exams?status=pending_review` in parallel with the rest.
+
+### Verified end-to-end (curl chain, 9 steps)
+1. Teacher login → token ✅
+2. `GET /students` → only JSS 1 students returned (4 rows, no leakage) ✅
+3. `GET /cbt/exams` → only JSS 1 exams, all with resolved `status` field ✅
+4. Teacher creates exam → starts as `draft` ✅
+5. Teacher PUT `published:true` → backend flips to `status=pending_review`, `published=false` ✅
+6. Student `POST /cbt/exams/{id}/start` → HTTP 404 ✅ (correctly blocked)
+7. Admin `GET /cbt/exams?status=pending_review` → 1 result ✅
+8. Admin `POST /cbt/exams/{id}/approve` → `status=published, published=true` ✅
+9. Student `POST /cbt/exams/{id}/start` → HTTP 200 ✅
+
+Screenshot confirmed: admin overview shows `1 pending` badge + the pending exam with `Approve & publish` button.
+
+### Files touched
+- `backend/auth_utils.py` (helpers)
+- `backend/routers/students.py` (scoped filter)
+- `backend/routers/scores.py` (per-student gate)
+- `backend/routers/cbt.py` (status field + workflow + approve endpoint)
+- `frontend/src/pages/TeacherDashboard.jsx` (badge + dynamic button label)
+- `frontend/src/pages/SchoolAdminDashboard.jsx` (pending-approvals card)
+
+### Still backlog
+- Broadsheet endpoint + frontend (Tier 2 — deferred this pass)
+- Class-teacher comments storage + UI
+- Pagination on teacher CBT table
+- Paystack / WhatsApp / Email (blocked on user-supplied keys)
+
+
+
 ## Latest session (Feb 2026 — TeacherDashboard Tier 1 scaffold)
 Replicated the SuperAdmin / SchoolAdmin shell architecture for the Teacher portal and laid the foundation for role-based class-teacher features.
 

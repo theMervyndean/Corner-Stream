@@ -64,6 +64,22 @@ def require_roles(*allowed_roles: str):
     return dep
 
 
+def teacher_assigned_classes(user: dict) -> list[str]:
+    """Return the list of class names a teacher is assigned to.
+    Used for scoping students / scores / exams to a teacher's own classes."""
+    cls = user.get("assigned_classes") or []
+    if not cls and user.get("assigned_class"):
+        cls = [user["assigned_class"]]
+    return [c for c in cls if c]
+
+
+def is_scoped_teacher(user: dict) -> bool:
+    """A 'scoped teacher' is a teacher without admin powers — their queries are
+    restricted to students/exams in their assigned_classes only."""
+    return user.get("role") == "teacher" and not user.get("is_admin")
+
+
+
 def set_auth_cookie(response, token: str):
     response.set_cookie(
         key="access_token",

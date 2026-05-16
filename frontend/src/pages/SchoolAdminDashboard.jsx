@@ -103,6 +103,16 @@ export default function SchoolAdminDashboard() {
 
   // Audit log / activity feed
   const [audit, setAudit] = useState({ events: [], counts: {}, total: 0 });
+  // Pending CBT exams awaiting admin approval
+  const [pendingExams, setPendingExams] = useState([]);
+
+  const approveExam = async (examId) => {
+    try {
+      await api.post(`/cbt/exams/${examId}/approve`);
+      toast.success("Exam approved & published");
+      refresh();
+    } catch (e) { toast.error(formatApiError(e.response?.data?.detail) || e.message); }
+  };
   const fetchAudit = async () => {
     try {
       const { data } = await api.get("/audit/");
@@ -179,13 +189,14 @@ export default function SchoolAdminDashboard() {
 
   const refresh = async () => {
     try {
-      const [sRes, stRes, rRes, sjRes, uRes, anRes] = await Promise.all([
+      const [sRes, stRes, rRes, sjRes, uRes, anRes, pendRes] = await Promise.all([
         api.get("/schools/me"),
         api.get("/students"),
         api.get("/payments/bank-receipts"),
         api.get("/subjects"),
         api.get("/users"),
         api.get("/analytics/school"),
+        api.get("/cbt/exams", { params: { status: "pending_review" } }).catch(() => ({ data: { exams: [] } })),
       ]);
       setSchool(sRes.data.school);
       setStudents(stRes.data.students || []);
@@ -193,6 +204,7 @@ export default function SchoolAdminDashboard() {
       setClassSubjects(sjRes.data.class_subjects || []);
       setUsersList(uRes.data.users || []);
       setAnalytics(anRes.data);
+      setPendingExams(pendRes.data.exams || []);
       // Sync profile form
       const s = sRes.data.school;
       setProfileForm({
@@ -645,6 +657,36 @@ export default function SchoolAdminDashboard() {
                 <Button variant="outline" onClick={() => setTab("subscription")} className="btn-anim" data-testid="quick-pay"><CreditCard size={16} className="mr-1" /> Pay subscription</Button>
                 <Button variant="outline" onClick={() => setTab("users")} className="btn-anim" data-testid="quick-users"><Users size={16} className="mr-1" /> Manage users</Button>
               </div>
+            </div>
+
+            {/* CBT exam approvals — only renders when there's something to review */}
+            <div className="cs-card p-6" data-testid="admin-pending-exams-card">
+              <div className="flex items-center justify-between">
+                <h3 className="font-display font-semibold cs-text-navy text-lg">CBT exam approvals</h3>
+                <Badge className={pendingExams.length ? "bg-amber-500 text-white" : "bg-slate-300 text-white"} data-testid="pending-exams-count">
+                  {pendingExams.length} pending
+                </Badge>
+              </div>
+              {pendingExams.length === 0 ? (
+                <p className="text-sm text-slate-500 mt-3">No exams awaiting approval. Teacher-submitted exams will appear here.</p>
+              ) : (
+                <ul className="mt-4 space-y-2" data-testid="pending-exams-list">
+                  {pendingExams.slice(0, 6).map((e) => (
+                    <li key={e.id} className="flex items-center justify-between gap-3 p-3 rounded-lg border" data-testid={`pending-exam-${e.id}`}>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm font-semibold cs-text-navy truncate">{e.title}</div>
+                        <div className="text-xs text-slate-500 truncate">{e.class_name} · {e.subject} · {e.questions?.length || 0} Qs · {e.term}</div>
+                      </div>
+                      <Button size="sm" onClick={() => approveExam(e.id)} className="cs-bg-green text-white hover:opacity-90 shrink-0" data-testid={`approve-exam-${e.id}`}>
+                        <CheckCircle2 size={14} className="mr-1" /> Approve & publish
+                      </Button>
+                    </li>
+                  ))}
+                  {pendingExams.length > 6 && (
+                    <li className="text-xs text-slate-500 px-1">+ {pendingExams.length - 6} more pending</li>
+                  )}
+                </ul>
+              )}
             </div>
             <div className="cs-card p-6">
               <h3 className="font-display font-semibold cs-text-navy text-lg">Bulk upload — fast onboarding</h3>

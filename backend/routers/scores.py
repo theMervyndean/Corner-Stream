@@ -3,9 +3,18 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from typing import Optional, List
 from db import get_db, new_id, now_iso, _calc_grade
-from auth_utils import get_current_user, require_roles
+from auth_utils import get_current_user, require_roles, teacher_assigned_classes, is_scoped_teacher
 
 router = APIRouter(prefix="/scores", tags=["scores"])
+
+
+def _block_if_outside_teacher_classes(user: dict, student: dict):
+    """Raise 403 if a scoped teacher tries to touch a student outside their classes."""
+    if not is_scoped_teacher(user):
+        return
+    classes = teacher_assigned_classes(user)
+    if student.get("class_name") not in classes:
+        raise HTTPException(status_code=403, detail="Student not in your assigned classes")
 
 
 class ScoreIn(BaseModel):
@@ -37,6 +46,7 @@ async def list_scores(student_id: str, term: Optional[str] = None, user: dict = 
         raise HTTPException(status_code=404, detail="Student not found")
     if user["role"] != "super_admin" and student["school_id"] != user.get("school_id"):
         raise HTTPException(status_code=403, detail="Forbidden")
+    _block_if_outside_teacher_classes(user, student)
     q = {"student_id": student_id}
     if term:
         q["term"] = term
@@ -54,6 +64,8 @@ async def upsert_scores(batch: ScoreBatch, user: dict = Depends(require_roles("t
         if not student:
             continue
         if user["role"] != "super_admin" and student["school_id"] != user.get("school_id"):
+            continue
+        if is_scoped_teacher(user) and student.get("class_name") not in teacher_assigned_classes(user):
             continue
         total = item.ca_score + item.exam_score
         grade = _calc_grade(total)
@@ -94,6 +106,7 @@ async def upsert_skill(payload: SkillIn, user: dict = Depends(require_roles("tea
         raise HTTPException(status_code=404, detail="Student not found")
     if user["role"] != "super_admin" and student["school_id"] != user.get("school_id"):
         raise HTTPException(status_code=403, detail="Forbidden")
+    _block_if_outside_teacher_classes(user, student)
     existing = await db.skill_ratings.find_one({
         "student_id": payload.student_id, "term": payload.term,
         "year": payload.year, "skill_name": payload.skill_name,

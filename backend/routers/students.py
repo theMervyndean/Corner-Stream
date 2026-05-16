@@ -7,7 +7,7 @@ from io import BytesIO
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment
 from db import get_db, hash_password, new_id, now_iso
-from auth_utils import get_current_user, require_roles
+from auth_utils import get_current_user, require_roles, teacher_assigned_classes, is_scoped_teacher
 from audit_log import log_event, EVENT_BULK_STUDENTS, EVENT_STUDENT_ADDED
 
 router = APIRouter(prefix="/students", tags=["students"])
@@ -38,10 +38,16 @@ class StudentUpdate(BaseModel):
 
 
 def _scope_filter(user: dict) -> dict:
-    """Limit students by school_id for non-super-admins."""
+    """Limit students by school_id for non-super-admins.
+    Teachers without admin powers are further restricted to their assigned_classes."""
     if user["role"] == "super_admin":
         return {}
-    return {"school_id": user["school_id"]}
+    q: dict = {"school_id": user["school_id"]}
+    if is_scoped_teacher(user):
+        classes = teacher_assigned_classes(user)
+        # Teacher with no assignment → sees no students at all
+        q["class_name"] = {"$in": classes} if classes else {"$in": []}
+    return q
 
 
 @router.get("")
@@ -49,6 +55,10 @@ async def list_students(class_name: Optional[str] = None, user: dict = Depends(g
     db = get_db()
     q = _scope_filter(user)
     if class_name:
+        # If the scope already restricts to a list of allowed classes, enforce it.
+        allowed = q.get("class_name")
+        if isinstance(allowed, dict) and "$in" in allowed and class_name not in allowed["$in"]:
+            return {"students": []}
         q["class_name"] = class_name
     if user["role"] == "parent":
         # Case-insensitive match — parent_email on students may have been stored
