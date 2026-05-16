@@ -223,13 +223,13 @@ export default function DigitalReportsDashboard({ school: initialSchool, refresh
       <div className="absolute right-4 top-4 opacity-10"><Award size={140} /></div>
       <div className="relative z-10 flex items-start justify-between flex-wrap gap-4">
         <div>
-          <span className="inline-block text-[10px] font-bold tracking-widest text-white/80 uppercase">Digital Reports — Subscription Active</span>
-          <h1 className="font-display text-2xl sm:text-3xl font-bold mt-1">{school.name}</h1>
+          <span className="inline-block text-[10px] font-bold tracking-widest text-white/80 uppercase">{(school.subscription_tier || "digital_reports").replace(/_/g, " ").toUpperCase()} · ACTIVE</span>
+          <h1 className="font-display text-2xl sm:text-3xl font-bold mt-1" data-testid="dr-overview-school-name">{school.name}</h1>
           <p className="text-sm text-white/80 mt-1 max-w-xl">Every result, every term — signed, sealed, and verifiable by QR. Issue half-term progress sheets and full-term report cards.</p>
         </div>
         <div className="flex gap-2 flex-wrap">
-          <Button onClick={() => setTab("reports")} className="bg-white text-slate-900 hover:bg-white/90 rounded-full font-semibold" data-testid="dr-btn-halfterm">
-            <FileText size={14} className="mr-1.5" /> Half-term Report
+          <Button onClick={() => setTab("reports")} className="bg-white text-slate-900 hover:bg-white/90 rounded-full font-semibold" data-testid="dr-btn-digitalreports">
+            <FileText size={14} className="mr-1.5" /> Digital Reports
           </Button>
           <Button onClick={() => setCbtModalOpen(true)} variant="outline" className="bg-transparent border-white/40 text-white hover:bg-white/10 rounded-full" data-testid="dr-btn-cbt">
             CBT
@@ -238,6 +238,93 @@ export default function DigitalReportsDashboard({ school: initialSchool, refresh
       </div>
     </div>
   );
+
+  const ReportsTab = () => {
+    const [pickClassFor, setPickClassFor] = React.useState(null); // 'half' | 'full' | null
+    const [pickedClass, setPickedClass] = React.useState("");
+    const uploadInputRef = React.useRef(null);
+    const onUpload = async (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      const fd = new FormData();
+      fd.append("file", file);
+      try {
+        await api.post("/students/bulk-upload", fd, { headers: { "Content-Type": "multipart/form-data" } });
+        toast.success("Sheet uploaded. Teachers can now see it in their dashboard.");
+        refresh();
+      } catch (e) { toast.error(formatApiError(e.response?.data?.detail) || e.message); }
+      finally { if (uploadInputRef.current) uploadInputRef.current.value = ""; }
+    };
+    return (
+      <div>
+        <h2 className="font-display text-2xl font-bold cs-text-navy">Reports</h2>
+        <p className="text-sm text-slate-500 mb-6">Download a result template, fill it in offline, and upload the completed sheet. Teachers see the uploaded sheets in their dashboard.</p>
+        <div className="grid sm:grid-cols-2 gap-5">
+          {/* HALF TERM box */}
+          <button onClick={() => setPickClassFor("half")} className="cs-card p-8 text-left hover:shadow-xl transition border-l-4" style={{ borderLeftColor: brand }} data-testid="dr-box-halfterm">
+            <div className="w-14 h-14 rounded-lg flex items-center justify-center text-white mb-4" style={{ backgroundColor: brand }}><FileText size={26} /></div>
+            <div className="font-display text-2xl font-bold cs-text-navy">Half-term Report</div>
+            <p className="text-sm text-slate-500 mt-2">Mid-term progress sheet. Download the template with CA columns (no exam yet), fill scores per student, then upload.</p>
+            <div className="mt-4 inline-flex items-center gap-1 text-sm font-semibold" style={{ color: brand }}>Open <ChevronRight size={14} /></div>
+          </button>
+          {/* FULL TERM box */}
+          <button onClick={() => setPickClassFor("full")} className="cs-card p-8 text-left hover:shadow-xl transition border-l-4" style={{ borderLeftColor: "#28A745" }} data-testid="dr-box-fullterm">
+            <div className="w-14 h-14 rounded-lg flex items-center justify-center text-white mb-4 cs-bg-green"><Award size={26} /></div>
+            <div className="font-display text-2xl font-bold cs-text-navy">Full-term Report</div>
+            <p className="text-sm text-slate-500 mt-2">End-of-term final report. Template includes CA + Exam columns. Upload after exams to generate report cards.</p>
+            <div className="mt-4 inline-flex items-center gap-1 text-sm font-semibold cs-text-green">Open <ChevronRight size={14} /></div>
+          </button>
+        </div>
+
+        {/* Class picker dialog */}
+        <Dialog open={!!pickClassFor} onOpenChange={(o) => { if (!o) { setPickClassFor(null); setPickedClass(""); } }}>
+          <DialogContent>
+            <DialogHeader><DialogTitle>{pickClassFor === "half" ? "Half-term Report" : "Full-term Report"}</DialogTitle></DialogHeader>
+            <div className="space-y-3">
+              <Label>Pick a class</Label>
+              <Select value={pickedClass} onValueChange={setPickedClass}>
+                <SelectTrigger data-testid="dr-pick-class"><SelectValue placeholder="Class" /></SelectTrigger>
+                <SelectContent>{classes.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
+              </Select>
+              <p className="text-xs text-slate-500">Download the template, share with the teacher to fill, then upload the completed sheet here.</p>
+              <input ref={uploadInputRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={onUpload} />
+              <div className="flex flex-col sm:flex-row gap-2 pt-2">
+                <Button disabled={!pickedClass} onClick={() => dlTemplate(pickedClass)} className="cs-bg-navy text-white rounded-full flex-1" data-testid="dr-dl-tpl"><FileSpreadsheet size={14} className="mr-1" /> Download template</Button>
+                <Button disabled={!pickedClass} onClick={() => uploadInputRef.current?.click()} className="cs-bg-green text-white rounded-full flex-1" data-testid="dr-up-tpl"><Plus size={14} className="mr-1" /> Upload completed sheet</Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Per-student quick links (kept for direct issuing) */}
+        <div className="mt-8">
+          <div className="eyebrow cs-text-navy mb-2">QUICK ISSUE PER STUDENT</div>
+          <div className="cs-card overflow-x-auto">
+            <Table>
+              <TableHeader><TableRow style={{ backgroundColor: brand }}><TableHead className="text-white">Student</TableHead><TableHead className="text-white">Class</TableHead><TableHead className="text-white">1st Term</TableHead><TableHead className="text-white">2nd Term</TableHead><TableHead className="text-white">3rd Term</TableHead></TableRow></TableHeader>
+              <TableBody>
+                {students.map((s, i) => (
+                  <TableRow key={s.id} className={i % 2 ? "bg-slate-50" : ""}>
+                    <TableCell className="font-semibold">{s.name}</TableCell>
+                    <TableCell>{s.class_name}</TableCell>
+                    {["1st Term", "2nd Term", "3rd Term"].map((t) => (
+                      <TableCell key={t}>
+                        <div className="flex gap-1">
+                          <Button size="sm" variant="outline" onClick={() => navigate(`/report/half/${s.id}/${encodeURIComponent(t)}`)} data-testid={`dr-rep-half-${s.id}-${t}`}>Half</Button>
+                          <Button size="sm" className="text-white" style={{ backgroundColor: brand }} onClick={() => navigate(`/report/${s.id}/${encodeURIComponent(t)}`)} data-testid={`dr-rep-full-${s.id}-${t}`}>Full</Button>
+                        </div>
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                ))}
+                {!students.length && <TableRow><TableCell colSpan={5} className="text-center text-slate-500 py-6">Add students first.</TableCell></TableRow>}
+              </TableBody>
+            </Table>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   const Overview = () => (
     <div>
@@ -442,46 +529,6 @@ export default function DigitalReportsDashboard({ school: initialSchool, refresh
       </div>
     );
   };
-
-  const ReportsTab = () => (
-    <div>
-      <h2 className="font-display text-2xl font-bold cs-text-navy">Reports</h2>
-      <p className="text-sm text-slate-500 mb-4">Click <b>Half-term</b> for a mid-term progress sheet (CA only), or <b>Full term</b> for the complete report (CA + Exam).</p>
-      <div className="cs-card overflow-x-auto">
-        <Table>
-          <TableHeader>
-            <TableRow style={{ backgroundColor: brand }}>
-              <TableHead className="text-white">Student</TableHead>
-              <TableHead className="text-white">Class</TableHead>
-              <TableHead className="text-white">Term</TableHead>
-              <TableHead className="text-white">Status</TableHead>
-              <TableHead className="text-white">Action</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {students.flatMap((s) => ["1st Term","2nd Term","3rd Term"].map((term)=>{
-              const locked = (s.balance_due||0)>0;
-              return (
-                <TableRow key={`${s.id}-${term}`} className="hover:bg-slate-50">
-                  <TableCell className="font-semibold">{s.name}</TableCell>
-                  <TableCell>{s.class_name}</TableCell>
-                  <TableCell>{term}</TableCell>
-                  <TableCell>{locked ? <Badge className="bg-amber-500 text-white"><Lock size={10} className="mr-1" />Debt</Badge> : <Badge className="cs-bg-green text-white">Ready</Badge>}</TableCell>
-                  <TableCell>
-                    <div className="flex gap-1">
-                      <Button size="sm" variant="outline" onClick={()=>navigate(`/report/half/${s.id}/${encodeURIComponent(term)}`)} data-testid={`dr-rep-half-${s.id}-${term}`}>Half-term</Button>
-                      <Button size="sm" className="text-white" style={{ backgroundColor: brand }} onClick={()=>navigate(`/report/${s.id}/${encodeURIComponent(term)}`)} data-testid={`dr-rep-full-${s.id}-${term}`}>Full term</Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              );
-            }))}
-            {!students.length && <TableRow><TableCell colSpan={5} className="text-center text-slate-500 py-8">Add students first.</TableCell></TableRow>}
-          </TableBody>
-        </Table>
-      </div>
-    </div>
-  );
 
   const ProfileTab = () => (
     <div>

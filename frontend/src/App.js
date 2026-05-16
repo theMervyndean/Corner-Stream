@@ -71,6 +71,9 @@ function AnimatedRoutes() {
         <Route path="/checkout/return" element={<ProtectedRoute><CheckoutReturn /></ProtectedRoute>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      <footer className="border-t bg-white py-4 px-4 text-center text-xs text-slate-500" data-testid="global-footer">
+        © {new Date().getFullYear()} Corner Streams · Taking Away the Paper Trap · <a href="mailto:thecornerstreams@gmail.com" className="cs-text-blue hover:underline font-semibold">thecornerstreams@gmail.com</a>
+      </footer>
     </div>
   );
 }

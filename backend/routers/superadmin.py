@@ -188,3 +188,35 @@ async def verify_school(school_id: str, payload: VerifyDecisionIn, user: dict = 
         }},
     )
     return {"ok": True, "status": "rejected"}
+
+
+# ---------- Cross-tenant lists (Super Admin Dashboard panes) ----------
+
+@router.get("/users")
+async def list_all_users(user: dict = Depends(require_roles("super_admin")), limit: int = 500):
+    """All users across every school — for Super Admin → Users pane."""
+    db = get_db()
+    users = await db.users.find(
+        {}, {"_id": 0, "password_hash": 0},
+    ).sort("created_at", -1).limit(limit).to_list(limit)
+    # Resolve school name for each user
+    school_ids = list({u.get("school_id") for u in users if u.get("school_id")})
+    schools = await db.schools.find({"id": {"$in": school_ids}}, {"_id": 0, "id": 1, "name": 1}).to_list(len(school_ids) or 1)
+    name_by_id = {s["id"]: s["name"] for s in schools}
+    for u in users:
+        u["school_name"] = name_by_id.get(u.get("school_id"), "—") if u.get("school_id") else "—"
+    return {"users": users}
+
+
+@router.get("/students")
+async def list_all_students(user: dict = Depends(require_roles("super_admin")), limit: int = 500):
+    """All students across every school — for Super Admin → Students pane."""
+    db = get_db()
+    students = await db.students.find({}, {"_id": 0}).sort("created_at", -1).limit(limit).to_list(limit)
+    school_ids = list({s.get("school_id") for s in students if s.get("school_id")})
+    schools = await db.schools.find({"id": {"$in": school_ids}}, {"_id": 0, "id": 1, "name": 1}).to_list(len(school_ids) or 1)
+    name_by_id = {s["id"]: s["name"] for s in schools}
+    for s in students:
+        s["school_name"] = name_by_id.get(s.get("school_id"), "—")
+    return {"students": students}
+
