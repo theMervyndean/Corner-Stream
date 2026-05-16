@@ -1,19 +1,24 @@
 import React, { useEffect, useState, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import Navbar from "@/components/Navbar.jsx";
+import { useAuth } from "@/lib/auth.jsx";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { api, formatApiError } from "@/lib/api";
 import { toast } from "sonner";
 import {
   Building2, Users, GraduationCap, Inbox, AlertTriangle, ShieldCheck,
   Receipt, BarChart3, UserPlus, KeyRound, Eye, Menu, X, ChevronRight,
   Calendar, Award, Wallet, BookOpen, Layers, Settings2, Search, FilterX,
+  LogOut, ChevronLeft, Headphones,
 } from "lucide-react";
 import { ChartCard, GrowthArea, DonutChart, BarSimple } from "@/components/Charts.jsx";
+
+const PAGE_SIZE = 12; // cards per page on long lists
 
 const NAV = [
   { key: "schools",    label: "Schools",             icon: Building2 },
@@ -48,8 +53,19 @@ const inRange = (iso, from, to) => {
 };
 
 export default function SuperAdmin() {
+  const { user: authUser, logout } = useAuth();
+  const navigate = useNavigate();
   const [tab, setTab] = useState("schools");
   const [drawerOpen, setDrawerOpen] = useState(false);
+
+  // Pagination state per long list
+  const [schoolsPage, setSchoolsPage] = useState(1);
+  const [usersPage, setUsersPage] = useState(1);
+  const [receiptsPage, setReceiptsPage] = useState(1);
+
+  // Support-access (impersonation) state
+  const [supportTarget, setSupportTarget] = useState(null);   // school object
+  const [supportLoading, setSupportLoading] = useState(false);
 
   // Data buckets
   const [stats, setStats] = useState(null);
@@ -174,6 +190,31 @@ export default function SuperAdmin() {
     } catch (e) { toast.error(formatApiError(e.response?.data?.detail) || e.message); }
   };
 
+  const handleLogout = async () => {
+    try { await logout(); } catch {}
+    navigate("/");
+  };
+
+  const confirmSupportAccess = async () => {
+    if (!supportTarget) return;
+    setSupportLoading(true);
+    try {
+      const { data } = await api.post(`/superadmin/schools/${supportTarget.id}/impersonate`);
+      // Preserve the original super-admin token so the user can return later if a UI is added
+      const currentToken = localStorage.getItem("cs_token");
+      if (currentToken) localStorage.setItem("cs_super_token_backup", currentToken);
+      localStorage.setItem("cs_token", data.token);
+      toast.success(`Now viewing ${data.school_name} as school admin`);
+      setSupportTarget(null);
+      // Hard reload so the app picks up the new token via /auth/me
+      window.location.href = "/dashboard/school";
+    } catch (e) {
+      toast.error(formatApiError(e.response?.data?.detail) || e.message);
+    } finally {
+      setSupportLoading(false);
+    }
+  };
+
   // ---- derivations ----
   const openLeads = useMemo(() => leads.filter((l) => !l.resolved), [leads]);
   const badge = (key) => key === "open_leads" ? openLeads.length : key === "awaiting" ? verifQueue.length : 0;
@@ -222,6 +263,43 @@ export default function SuperAdmin() {
       return true;
     });
   }, [receipts, receiptSearch, receiptFrom, receiptTo]);
+
+  // Reset pagination whenever filters change (prevents "Page 5 of 1" empty states)
+  useEffect(() => { setSchoolsPage(1); }, [tierFilter, schoolSearch, schoolFrom, schoolTo]);
+  useEffect(() => { setUsersPage(1); }, [userSearch, userFrom, userTo]);
+  useEffect(() => { setReceiptsPage(1); }, [receiptSearch, receiptFrom, receiptTo]);
+
+  // Paginated slices
+  const pagedSchools = useMemo(() => filteredSchools.slice((schoolsPage - 1) * PAGE_SIZE, schoolsPage * PAGE_SIZE), [filteredSchools, schoolsPage]);
+  const pagedUsers = useMemo(() => filteredUsers.slice((usersPage - 1) * PAGE_SIZE, usersPage * PAGE_SIZE), [filteredUsers, usersPage]);
+  const pagedReceipts = useMemo(() => filteredReceipts.slice((receiptsPage - 1) * PAGE_SIZE, receiptsPage * PAGE_SIZE), [filteredReceipts, receiptsPage]);
+
+  const schoolsTotalPages = Math.max(1, Math.ceil(filteredSchools.length / PAGE_SIZE));
+  const usersTotalPages = Math.max(1, Math.ceil(filteredUsers.length / PAGE_SIZE));
+  const receiptsTotalPages = Math.max(1, Math.ceil(filteredReceipts.length / PAGE_SIZE));
+
+  // Reusable Pager
+  const renderPager = ({ page, totalPages, onPrev, onNext, totalItems, testidPrefix }) => {
+    if (totalItems <= PAGE_SIZE) return null;
+    const start = (page - 1) * PAGE_SIZE + 1;
+    const end = Math.min(page * PAGE_SIZE, totalItems);
+    return (
+      <div className="mt-4 flex items-center justify-between gap-3 cs-card p-3" data-testid={`${testidPrefix}-pager`}>
+        <div className="text-xs text-slate-500">
+          Showing <span className="font-semibold cs-text-navy">{start}–{end}</span> of <span className="font-semibold cs-text-navy">{totalItems}</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button size="sm" variant="outline" onClick={onPrev} disabled={page <= 1} className="text-xs" data-testid={`${testidPrefix}-prev`}>
+            <ChevronLeft size={14} className="mr-1" /> Previous
+          </Button>
+          <span className="text-xs text-slate-600 px-2">Page <span className="font-semibold cs-text-navy">{page}</span> of {totalPages}</span>
+          <Button size="sm" variant="outline" onClick={onNext} disabled={page >= totalPages} className="text-xs" data-testid={`${testidPrefix}-next`}>
+            Next <ChevronRight size={14} className="ml-1" />
+          </Button>
+        </div>
+      </div>
+    );
+  };
 
   const currentLabel = NAV.find((n) => n.key === tab)?.label || "Super Admin Dashboard";
   const pickPane = (k) => { setTab(k); setDrawerOpen(false); };
@@ -277,9 +355,12 @@ export default function SuperAdmin() {
           );
         })}
       </nav>
-      <div className="p-2 border-t border-white/10">
-        <Button onClick={() => setOverrideOpen(true)} className="w-full bg-white/10 hover:bg-white/20 text-white rounded-md text-xs h-9 justify-start gap-2 border border-white/10" data-testid="open-pw-override">
-          <KeyRound size={14} /> Password override
+      <div className="p-2 border-t border-white/10 space-y-2">
+        <Button onClick={() => setOverrideOpen(true)} className="w-full bg-white/10 hover:bg-white/20 text-white rounded-md text-xs h-9 justify-start gap-2 border border-white/10 transition-all duration-200" data-testid="open-pw-override">
+          <KeyRound size={14} /> <span className="lg:inline">Password override</span>
+        </Button>
+        <Button onClick={handleLogout} className="w-full bg-red-500/15 hover:bg-red-500/30 text-white rounded-md text-xs h-9 justify-start gap-2 border border-red-400/30 transition-all duration-200" data-testid="sidebar-logout">
+          <LogOut size={14} /> <span className="lg:inline">Logout</span>
         </Button>
       </div>
     </div>
@@ -321,8 +402,8 @@ export default function SuperAdmin() {
         })}
 
         {/* Cards grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4" data-testid="school-cards-grid">
-          {filteredSchools.map((s) => {
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4" data-testid="school-cards-grid">
+          {pagedSchools.map((s) => {
             const tierMeta = TIER_META.find((t) => t.key === s.subscription_tier);
             const active = s.verification_status === "active" && !s.kill_switch;
             const expires = s.subscription_expires_at ? new Date(s.subscription_expires_at) : null;
@@ -385,7 +466,10 @@ export default function SuperAdmin() {
                     <Switch checked={!!s.kill_switch} onCheckedChange={() => toggleKill(s.id, s.kill_switch)} data-testid={`kill-${s.id}`} title={s.kill_switch ? "Resume school" : "Pause school"} />
                     <span className="text-[10px] text-slate-500">{s.kill_switch ? "Paused" : "Active"}</span>
                   </div>
-                  <div className="flex gap-1">
+                  <div className="flex flex-wrap gap-1 justify-end">
+                    <Button size="sm" variant="outline" onClick={() => setSupportTarget(s)} className="text-xs border-amber-400 text-amber-700 hover:bg-amber-50" data-testid={`support-access-${s.id}`} title="Securely view this school for troubleshooting">
+                      <Headphones size={12} className="mr-1" /> Support
+                    </Button>
                     <Button size="sm" variant="outline" onClick={() => setTierPickerForId(pickerOpen ? null : s.id)} className="text-xs" data-testid={`upgrade-btn-${s.id}`}><Settings2 size={12} className="mr-1" /> Plan</Button>
                     <Button size="sm" variant="destructive" onClick={() => cancelSubscription(s.id, s.name)} className="text-xs" data-testid={`cancel-btn-${s.id}`}>Cancel</Button>
                   </div>
@@ -411,6 +495,12 @@ export default function SuperAdmin() {
           })}
           {!filteredSchools.length && <div className="col-span-full cs-card p-10 text-center text-slate-500">No schools match the filters.</div>}
         </div>
+        {renderPager({
+          page: schoolsPage, totalPages: schoolsTotalPages,
+          onPrev: () => setSchoolsPage((p) => Math.max(1, p - 1)),
+          onNext: () => setSchoolsPage((p) => Math.min(schoolsTotalPages, p + 1)),
+          totalItems: filteredSchools.length, testidPrefix: "schools",
+        })}
       </div>
     );
 
@@ -423,8 +513,8 @@ export default function SuperAdmin() {
           onClear: () => { setUserSearch(""); setUserFrom(""); setUserTo(""); },
           placeholder: "Search by email, name, role, school…", testidPrefix: "users",
         })}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3" data-testid="users-grid">
-          {filteredUsers.map((u) => (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3" data-testid="users-grid">
+          {pagedUsers.map((u) => (
             <div key={u.id} className="cs-card p-4" data-testid={`user-card-${u.id}`}>
               <div className="flex items-start gap-3">
                 <div className="w-10 h-10 rounded-full cs-bg-navy text-white flex items-center justify-center text-xs font-bold flex-shrink-0">{initialsOf(u.name || u.email)}</div>
@@ -442,6 +532,12 @@ export default function SuperAdmin() {
           ))}
           {!filteredUsers.length && <div className="col-span-full cs-card p-10 text-center text-slate-500">No users match the filters.</div>}
         </div>
+        {renderPager({
+          page: usersPage, totalPages: usersTotalPages,
+          onPrev: () => setUsersPage((p) => Math.max(1, p - 1)),
+          onNext: () => setUsersPage((p) => Math.min(usersTotalPages, p + 1)),
+          totalItems: filteredUsers.length, testidPrefix: "users",
+        })}
       </div>
     );
 
@@ -552,8 +648,8 @@ export default function SuperAdmin() {
           onClear: () => { setReceiptSearch(""); setReceiptFrom(""); setReceiptTo(""); },
           placeholder: "Search by email, tier or status…", testidPrefix: "receipts",
         })}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4" data-testid="receipts-grid">
-          {filteredReceipts.map((r) => (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4" data-testid="receipts-grid">
+          {pagedReceipts.map((r) => (
             <div key={r.id} className="cs-card p-4 flex flex-col gap-2" data-testid={`receipt-card-${r.id}`}>
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0 flex-1">
@@ -579,6 +675,12 @@ export default function SuperAdmin() {
           ))}
           {!filteredReceipts.length && <div className="col-span-full cs-card p-10 text-center text-slate-500">No receipts match the filters.</div>}
         </div>
+        {renderPager({
+          page: receiptsPage, totalPages: receiptsTotalPages,
+          onPrev: () => setReceiptsPage((p) => Math.max(1, p - 1)),
+          onNext: () => setReceiptsPage((p) => Math.min(receiptsTotalPages, p + 1)),
+          totalItems: filteredReceipts.length, testidPrefix: "receipts",
+        })}
       </div>
     );
 
@@ -656,36 +758,51 @@ export default function SuperAdmin() {
     <div className="min-h-screen bg-slate-50">
       <Navbar variant="dashboard" />
 
-      <aside className="hidden sm:block fixed left-0 top-14 bottom-0 z-30 w-16 lg:w-56 border-r" data-testid="super-sidebar-desktop">
+      {/* Pinned sidebar — full screen height, only inner nav scrolls */}
+      <aside className="hidden sm:flex flex-col fixed left-0 top-14 bottom-0 z-30 w-16 lg:w-64 xl:w-72 border-r shadow-sm transition-all duration-300" data-testid="super-sidebar-desktop">
         <SidebarContent onClickItem={(k) => setTab(k)} />
       </aside>
 
       {drawerOpen && (
         <div className="sm:hidden fixed inset-0 z-40" data-testid="super-drawer">
-          <div className="absolute inset-0 bg-slate-900/60" onClick={() => setDrawerOpen(false)} />
-          <aside className="absolute left-0 top-0 bottom-0 w-64 shadow-xl">
+          <div className="absolute inset-0 bg-slate-900/60 transition-opacity duration-300" onClick={() => setDrawerOpen(false)} />
+          <aside className="absolute left-0 top-0 bottom-0 w-72 shadow-xl transition-transform duration-300">
             <SidebarContent onClickItem={pickPane} />
           </aside>
         </div>
       )}
 
-      <main className="sm:ml-16 lg:ml-56 px-4 sm:px-6 lg:px-8 py-6" data-testid="super-admin">
-        <div className="flex items-center justify-between mb-4 sm:mb-6">
-          <div className="flex items-center gap-3">
+      <main className="sm:ml-16 lg:ml-64 xl:ml-72 px-4 sm:px-6 lg:px-10 xl:px-12 py-6 max-w-[1800px] transition-all duration-300" data-testid="super-admin">
+        {/* Slim top header with page title + user identity on the far right */}
+        <div className="flex items-center justify-between mb-4 sm:mb-6 gap-3">
+          <div className="flex items-center gap-3 min-w-0">
             <button className="sm:hidden p-2 rounded-md border border-slate-200 bg-white" onClick={() => setDrawerOpen(true)} data-testid="super-hamburger"><Menu size={18} /></button>
-            <div>
+            <div className="min-w-0">
               <span className="eyebrow">CORNER STREAMS</span>
-              <h1 className="font-display text-2xl sm:text-3xl font-bold cs-text-navy mt-1" data-testid="super-title">Super Admin Dashboard</h1>
+              <h1 className="font-display text-2xl sm:text-3xl font-bold cs-text-navy mt-1 truncate" data-testid="super-title">Super Admin Dashboard</h1>
               <p className="text-xs text-slate-500 mt-0.5">{currentLabel}</p>
             </div>
           </div>
+          {authUser && typeof authUser === "object" && (
+            <div className="hidden md:flex items-center gap-3 cs-card px-4 py-2 shrink-0" data-testid="super-header-user">
+              <div className="w-9 h-9 rounded-full cs-bg-navy text-white flex items-center justify-center font-bold text-xs flex-shrink-0">
+                {(authUser.name || authUser.email || "?").split(" ").filter(Boolean).slice(0, 2).map((p) => p[0]?.toUpperCase()).join("")}
+              </div>
+              <div className="text-right leading-tight">
+                <div className="text-sm font-semibold cs-text-navy" data-testid="super-header-username">{authUser.name || authUser.email}</div>
+                <div className="text-[10px] uppercase tracking-wider text-slate-500" data-testid="super-header-userrole">Super Admin</div>
+              </div>
+            </div>
+          )}
         </div>
 
         {KpiRow}
 
         <div className="mt-2">
           <h2 className="font-display text-lg font-bold cs-text-navy mb-3">{currentLabel}</h2>
-          {paneBody}
+          <div key={tab} className="cs-pane-fade" data-testid={`super-pane-${tab}`}>
+            {paneBody}
+          </div>
         </div>
       </main>
 
@@ -735,6 +852,33 @@ export default function SuperAdmin() {
               {viewReceipt.file_data_url && <img src={viewReceipt.file_data_url} alt="receipt" className="w-full rounded border" />}
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Support Access (impersonation) confirmation */}
+      <Dialog open={!!supportTarget} onOpenChange={(o) => !o && setSupportTarget(null)}>
+        <DialogContent data-testid="support-access-dialog">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><Headphones size={18} className="text-amber-600" /> Confirm Support Access</DialogTitle>
+            <DialogDescription className="pt-2">
+              You are about to securely view <b className="cs-text-navy">{supportTarget?.name}</b>'s environment as a school admin for administrative troubleshooting. This action will be logged in the school's audit trail.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="rounded-md bg-amber-50 border border-amber-200 p-3 text-xs text-amber-900">
+            <div className="font-semibold mb-1">⚠ What happens next</div>
+            <ul className="list-disc ml-4 space-y-0.5">
+              <li>Your super-admin session will be replaced by a school-admin session for this school.</li>
+              <li>An audit-log entry will be created on the school's record.</li>
+              <li>You will be redirected to the School Admin dashboard.</li>
+              <li>To return to Super Admin, sign out and log in again with your super admin credentials.</li>
+            </ul>
+          </div>
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button variant="outline" onClick={() => setSupportTarget(null)} data-testid="support-cancel">Cancel</Button>
+            <Button onClick={confirmSupportAccess} disabled={supportLoading} className="cs-bg-navy text-white hover:opacity-90" data-testid="support-confirm">
+              {supportLoading ? "Switching…" : "Yes, enter support mode"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

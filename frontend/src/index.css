@@ -311,6 +311,11 @@ header nav a:hover::after {
   to { opacity: 1; transform: translateY(0); }
 }
 
+/* Generic fade-up for panes that switch (e.g. Super Admin dashboard tabs without role="tabpanel") */
+.cs-pane-fade {
+  animation: tabFade 300ms var(--cs-ease) both;
+}
+
 /* Tabs trigger underline gleam */
 [role="tab"] {
   transition: color 180ms ease, background-color 180ms ease;

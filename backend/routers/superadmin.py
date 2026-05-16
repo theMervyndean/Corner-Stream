@@ -4,7 +4,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from typing import Optional
 from db import get_db, hash_password, now_iso
-from auth_utils import require_roles
+from auth_utils import require_roles, create_access_token
+from audit_log import log_event, EVENT_SUPPORT_ACCESS
 
 router = APIRouter(prefix="/superadmin", tags=["superadmin"])
 
@@ -249,5 +250,40 @@ async def update_school_tier(school_id: str, payload: TierUpdateIn, user: dict =
         raise HTTPException(status_code=404, detail="School not found")
     school = await db.schools.find_one({"id": school_id}, {"_id": 0})
     return {"ok": True, "school": school}
+
+
+# ---------- Support Access (impersonate a school's school_admin for troubleshooting) ----------
+
+@router.post("/schools/{school_id}/impersonate")
+async def impersonate_school_admin(school_id: str, user: dict = Depends(require_roles("super_admin"))):
+    """Issue a school_admin JWT for this school so the super admin can view that school's
+    environment for administrative troubleshooting. Logs an audit entry."""
+    db = get_db()
+    school = await db.schools.find_one({"id": school_id}, {"_id": 0})
+    if not school:
+        raise HTTPException(status_code=404, detail="School not found")
+    admin = await db.users.find_one(
+        {"school_id": school_id, "role": "school_admin"},
+        {"_id": 0, "password_hash": 0},
+    )
+    if not admin:
+        raise HTTPException(status_code=404, detail="No school admin found for this school")
+    token = create_access_token(admin["id"], admin["email"], admin["role"])
+    await log_event(
+        school_id=school_id,
+        event_type=EVENT_SUPPORT_ACCESS,
+        actor_id=user.get("id"),
+        actor_name=user.get("name") or user.get("email"),
+        actor_role="super_admin",
+        summary=f"Super admin {user.get('email')} entered support-access mode",
+        details={"impersonated_user_email": admin.get("email"), "impersonated_user_id": admin.get("id")},
+    )
+    return {
+        "ok": True,
+        "token": token,
+        "school_id": school_id,
+        "school_name": school.get("name"),
+        "impersonated_user": {"id": admin.get("id"), "email": admin.get("email"), "name": admin.get("name"), "role": admin.get("role")},
+    }
 
 

@@ -5,6 +5,31 @@ Corner Streams is a SaaS for Nigerian schools — "Taking away the paper trap." 
 
 Brand: Deep Navy #002147, Vibrant Green #28A745, Electric Blue #0056B3.
 
+
+## Latest session (May 2026 — SuperAdmin shell refresh)
+Pulled latest code from GitHub branch `corner-streams` (the auto-saved branch). All 7 SuperAdmin shell tasks done:
+1. **Pinned sidebar** — `fixed left-0 top-14 bottom-0` with `flex flex-col h-full`; only the inner `<nav>` scrolls.
+2. **PC widening** — sidebar `lg:w-64 xl:w-72`; main content `lg:ml-64 xl:ml-72 lg:px-10 xl:px-12 max-w-[1800px]`.
+3. **Logout at sidebar bottom** — new red-tinted button anchored beneath Password override (`data-testid="sidebar-logout"`).
+4. **Top header user identity** — slim card top-right of main showing avatar + name + "Super Admin" (`super-header-user`, `super-header-username`, `super-header-userrole`).
+5. **Client-side pagination** — `PAGE_SIZE=12` cards per page on Schools, Users, Receipts. Filter changes auto-reset to page 1. Prev/Next with "Page X of Y" + "Showing A–B of N" (testids `schools-pager`, `users-pager`, `receipts-pager`).
+6. **Smooth animations** — `transition-all duration-300` on sidebar; new `cs-pane-fade` CSS class wraps `paneBody` and reuses existing `tabFade` keyframe for fade-up on tab switch.
+7. **Support Access** — new amber "Support" button on each school card (`support-access-{id}`) opens a confirmation dialog with audit-warning. On confirm, calls new endpoint `POST /api/superadmin/schools/{id}/impersonate` which issues a school_admin JWT and logs `EVENT_SUPPORT_ACCESS` to audit_log. Original super token saved to `localStorage.cs_super_token_backup`, new token to `cs_token`, then hard-redirect to `/dashboard/school`.
+
+### Backend additions
+- `backend/audit_log.py`: new `EVENT_SUPPORT_ACCESS = "support_access_impersonation"` constant.
+- `backend/routers/superadmin.py`: new `POST /superadmin/schools/{school_id}/impersonate` endpoint (super_admin only, 404 if no school_admin user exists for school).
+
+### Files touched
+- `frontend/src/pages/SuperAdmin.jsx` — full shell rewrite via targeted edits, lints clean
+- `frontend/src/index.css` — added `.cs-pane-fade` class
+- `backend/audit_log.py` — new EVENT constant
+- `backend/routers/superadmin.py` — impersonation endpoint
+
+### Verified via screenshot
+Login as `super@cornerstreams.com` → all 3 panes render, sidebar logout visible, header user card visible, Support Access dialog opens with warning. Lint clean. `/api/health` returns 200.
+
+
 ## Latest session (Feb 2026 — migration + P0 #1, #10, #11)
 Project codebase was migrated from the `corner_streams` branch of `github.com/theMervyndean/Corner-Stream` into a new Emergent workspace (previous URL was `school-admin-hub-62...`, this workspace is `branding-hub-47...`). All routers, pages, PRD, design_guidelines, demo data and tests restored.
 

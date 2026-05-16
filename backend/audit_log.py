@@ -13,6 +13,7 @@ EVENT_CLASS_REMOVED = "class_removed"
 EVENT_EXAM_CREATED = "exam_created"
 EVENT_EXAM_PUBLISHED = "exam_published"
 EVENT_ATTEMPT_SUBMITTED = "attempt_submitted"
+EVENT_SUPPORT_ACCESS = "support_access_impersonation"
 
 
 async def log_event(
