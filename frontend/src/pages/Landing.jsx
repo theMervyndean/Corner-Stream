@@ -89,7 +89,7 @@ export default function Landing() {
       {/* HERO */}
       <section className="relative">
         <div className="grid-bg absolute inset-0 -z-10" />
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 pt-10 pb-24 grid md:grid-cols-2 gap-10 items-center">
+        <div className="max-w-[1600px] mx-auto px-4 sm:px-6 pt-10 pb-24 grid md:grid-cols-2 gap-10 items-center">
           <div className="fade-up">
             <span className="eyebrow" data-testid="hero-eyebrow">EDUCATION SAAS · NIGERIA</span>
             <h1 className="font-display text-4xl sm:text-5xl lg:text-6xl tracking-tight font-extrabold cs-text-navy mt-3 leading-[1.05]">
@@ -144,7 +144,7 @@ export default function Landing() {
 
       {/* FEATURES */}
       <section id="features" className="py-24 bg-white">
-        <div className="max-w-7xl mx-auto px-6">
+        <div className="max-w-[1600px] mx-auto px-6">
           <span className="eyebrow">CORE CAPABILITIES</span>
           <h2 className="font-display text-3xl sm:text-4xl font-bold cs-text-navy mt-2 max-w-2xl">
             Everything a Nigerian school needs to retire the file cabinet.
@@ -168,7 +168,7 @@ export default function Landing() {
 
       {/* SAMPLES */}
       <section id="samples" className="py-24 bg-[#F8FAFC]">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6">
+        <div className="max-w-[1600px] mx-auto px-4 sm:px-6">
           <div className="flex flex-col items-start md:items-center text-left md:text-center">
             <span className="eyebrow">SEE BEFORE YOU BUY</span>
             <h2 className="font-display text-3xl sm:text-4xl font-bold cs-text-navy mt-2 max-w-2xl">
@@ -248,7 +248,7 @@ export default function Landing() {
 
       {/* PRICING */}
       <section id="pricing" className="py-24 bg-[#F8FAFC]">
-        <div className="max-w-7xl mx-auto px-6">
+        <div className="max-w-[1600px] mx-auto px-6">
           <div className="flex flex-col items-start md:items-center text-left md:text-center">
             <span className="eyebrow">SIMPLE NAIRA PRICING</span>
             <h2 className="font-display text-3xl sm:text-4xl font-bold cs-text-navy mt-2">
@@ -321,7 +321,7 @@ export default function Landing() {
 
       {/* TESTIMONIALS / SHOWCASE */}
       <section className="py-24 bg-white">
-        <div className="max-w-7xl mx-auto px-6 grid md:grid-cols-3 gap-6" data-reveal>
+        <div className="max-w-[1600px] mx-auto px-6 grid md:grid-cols-3 gap-6" data-reveal>
           <div className="cs-card overflow-hidden md:col-span-2 row-span-2">
             <img src={TEACHER_IMG} alt="Teacher" className="w-full h-72 object-cover" />
             <div className="p-8">
@@ -356,7 +356,7 @@ export default function Landing() {
 
       {/* ABOUT US */}
       <section id="about" className="py-24 bg-[#F8FAFC]">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 grid md:grid-cols-5 gap-10 items-center">
+        <div className="max-w-[1400px] mx-auto px-4 sm:px-6 grid md:grid-cols-5 gap-10 items-center">
           <div className="md:col-span-2 relative">
             <div className="absolute -top-4 -left-4 w-28 h-28 cs-bg-green opacity-10 rounded-2xl rotate-6" />
             <div className="absolute -bottom-4 -right-4 w-32 h-32 cs-bg-blue opacity-10 rounded-2xl -rotate-3" />
@@ -410,7 +410,7 @@ export default function Landing() {
 
       {/* CONTACT */}
       <section id="contact" className="py-24 cs-bg-navy text-white">
-        <div className="max-w-6xl mx-auto px-6 grid md:grid-cols-2 gap-12">
+        <div className="max-w-[1400px] mx-auto px-6 grid md:grid-cols-2 gap-12">
           <div>
             <span className="eyebrow text-white/70">CONTACT US</span>
             <h2 className="font-display text-3xl sm:text-4xl font-bold mt-2">Tell us about your school.</h2>
@@ -441,7 +441,7 @@ export default function Landing() {
       </section>
 
       <footer className="cs-bg-navy text-white/70 text-xs py-6 border-t border-white/10">
-        <div className="max-w-7xl mx-auto px-6 flex flex-wrap items-center justify-between gap-4">
+        <div className="max-w-[1600px] mx-auto px-6 flex flex-wrap items-center justify-between gap-4">
           <div>© {new Date().getFullYear()} Corner Streams · Taking away the paper trap.</div>
           <div className="flex items-center gap-5">
             <a href="mailto:thecornerstreams@gmail.com" className="hover:text-white">thecornerstreams@gmail.com</a>

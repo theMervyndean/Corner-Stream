@@ -18,6 +18,7 @@ import {
   CheckCircle2, Circle, Download, GraduationCap, FileSpreadsheet, Activity,
   UserPlus, ClipboardList, History, Eye, RotateCcw, UserCog, UserMinus,
   Search, Filter, X as XIcon, BadgeCheck,
+  Menu, ChevronRight, LogOut, Layers, BarChart3,
 } from "lucide-react";
 import { ChartCard, BarSimple, DonutChart, GrowthArea } from "@/components/Charts.jsx";
 import BulkUploadDialog from "@/components/BulkUploadDialog.jsx";
@@ -35,13 +36,19 @@ const PRICING = {
 const DURS = [{ k: "1_term", l: "1 Term" }, { k: "2_terms", l: "2 Terms" }, { k: "full_session", l: "Full Session" }];
 
 export default function SchoolAdminDashboard() {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const [school, setSchool] = useState(null);
   const [students, setStudents] = useState([]);
   const [receipts, setReceipts] = useState([]);
   const [tab, setTab] = useState("overview");
+  const [drawerOpen, setDrawerOpen] = useState(false);
+
+  const handleLogout = async () => {
+    try { await logout(); } catch {}
+    navigate("/");
+  };
 
   const [newStudent, setNewStudent] = useState({ name: "", age: 10, gender: "Male", class_name: "", parent_email: "", balance_due: 0 });
   const [studentDlg, setStudentDlg] = useState(false);
@@ -443,6 +450,60 @@ export default function SchoolAdminDashboard() {
   const debtCount = useMemo(() => students.filter((s) => (s.balance_due || 0) > 0).length, [students]);
   const totalDebt = useMemo(() => students.reduce((a, s) => a + (s.balance_due || 0), 0), [students]);
 
+  // Sidebar navigation config
+  const NAV = [
+    { k: "overview", l: "Overview", I: BarChart3 },
+    { k: "profile", l: "Profile", I: BadgeCheck },
+    { k: "classes", l: "Classes", I: BookOpen },
+    { k: "users", l: "Users", I: Users },
+    { k: "students", l: "Students", I: GraduationCap },
+    { k: "subjects", l: "Subjects", I: Layers },
+    { k: "subscription", l: "Subscription", I: CreditCard },
+    { k: "receipts", l: "Receipts", I: Receipt },
+  ];
+  const currentLabel = NAV.find((n) => n.k === tab)?.l || "Dashboard";
+
+  const SidebarContent = ({ onClickItem }) => (
+    <div className="h-full flex flex-col cs-bg-navy text-white">
+      <div className="p-3 border-b border-white/10 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <div className="w-9 h-9 rounded-md bg-white/10 flex items-center justify-center"><BadgeCheck size={18} /></div>
+          <div className="hidden lg:block leading-tight">
+            <div className="text-[10px] tracking-wider text-white/60 uppercase">School Admin</div>
+            <div className="text-xs font-semibold truncate max-w-[140px]">{school?.name || "—"}</div>
+          </div>
+        </div>
+        {drawerOpen && (
+          <button className="sm:hidden p-1.5 rounded text-white/80 hover:bg-white/10" onClick={() => setDrawerOpen(false)} aria-label="Close sidebar"><XIcon size={16} /></button>
+        )}
+      </div>
+      <nav className="flex-1 overflow-y-auto p-2 space-y-1">
+        {NAV.map((n) => {
+          const Icon = n.I;
+          const active = tab === n.k;
+          return (
+            <button
+              key={n.k}
+              onClick={() => { onClickItem(n.k); setDrawerOpen(false); }}
+              className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-md text-xs transition-all duration-200 ${active ? "bg-white text-[#002147] shadow-sm font-semibold" : "text-white/85 hover:bg-white/10"}`}
+              data-testid={`school-nav-${n.k}`}
+              title={n.l}
+            >
+              <Icon size={15} className="flex-shrink-0" />
+              <span className="hidden lg:inline truncate flex-1 text-left">{n.l}</span>
+              {active && <ChevronRight size={12} className="hidden lg:inline" />}
+            </button>
+          );
+        })}
+      </nav>
+      <div className="p-2 border-t border-white/10 space-y-2">
+        <Button onClick={handleLogout} className="w-full bg-red-500/15 hover:bg-red-500/30 text-white rounded-md text-xs h-9 justify-start gap-2 border border-red-400/30 transition-all duration-200" data-testid="school-sidebar-logout">
+          <LogOut size={14} /> <span className="hidden lg:inline">Logout</span>
+        </Button>
+      </div>
+    </div>
+  );
+
   if (!user || !school) return <div className="min-h-screen"><Navbar variant="dashboard" /><div className="p-10 text-slate-500">Loading…</div></div>;
 
   // Plan-specific dashboard: Digital Reports tier gets its own sidebar-based experience.
@@ -453,31 +514,63 @@ export default function SchoolAdminDashboard() {
   const locked = school.verification_status && school.verification_status !== "active";
 
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen bg-slate-50">
       <Navbar variant="dashboard" />
       {locked && <LockedOverlay school={school} onUnlocked={refresh} />}
-      <div className="max-w-7xl mx-auto px-6 py-8" data-testid="school-admin-dashboard">
-        <div className="flex flex-wrap items-end justify-between gap-4">
-          <div>
-            <span className="eyebrow">SCHOOL ADMIN</span>
-            <h1 className="font-display text-3xl font-bold cs-text-navy mt-1">{school.name}</h1>
-            <div className="text-sm text-slate-500 mt-1">{school.address || "—"} · Principal: {school.principal_name}</div>
+
+      {/* Pinned sidebar (desktop) */}
+      <aside className="hidden sm:flex flex-col fixed left-0 top-14 bottom-0 z-30 w-16 lg:w-64 xl:w-72 border-r shadow-sm transition-all duration-300" data-testid="school-sidebar-desktop">
+        <SidebarContent onClickItem={(k) => setTab(k)} />
+      </aside>
+
+      {/* Mobile drawer */}
+      {drawerOpen && (
+        <div className="sm:hidden fixed inset-0 z-40" data-testid="school-drawer">
+          <div className="absolute inset-0 bg-slate-900/60 transition-opacity duration-300" onClick={() => setDrawerOpen(false)} />
+          <aside className="absolute left-0 top-0 bottom-0 w-72 shadow-xl transition-transform duration-300">
+            <SidebarContent onClickItem={(k) => setTab(k)} />
+          </aside>
+        </div>
+      )}
+
+      <main className="sm:ml-16 lg:ml-64 xl:ml-72 px-4 sm:px-6 lg:px-10 xl:px-12 py-6 max-w-[1800px] transition-all duration-300" data-testid="school-admin-dashboard">
+        {/* Top header — page title + school name & role on far right */}
+        <div className="flex items-center justify-between mb-4 sm:mb-6 gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <button className="sm:hidden p-2 rounded-md border border-slate-200 bg-white" onClick={() => setDrawerOpen(true)} data-testid="school-hamburger"><Menu size={18} /></button>
+            <div className="min-w-0">
+              <span className="eyebrow">SCHOOL ADMIN</span>
+              <h1 className="font-display text-2xl sm:text-3xl font-bold cs-text-navy mt-1 truncate" data-testid="school-title">{school.name}</h1>
+              <div className="text-xs sm:text-sm text-slate-500 mt-0.5 truncate">{school.address || "—"} · Principal: {school.principal_name || "—"}</div>
+            </div>
           </div>
-          <div className="flex items-center gap-3">
-            {school.kill_switch ? (
-              <Badge className="bg-red-500 text-white">Kill-switch ACTIVE</Badge>
-            ) : (
-              <Badge className="cs-bg-green text-white">Active</Badge>
-            )}
-            <div className="text-xs text-right">
-              <div className="font-semibold cs-text-navy">{school.subscription_tier ? PRICING[school.subscription_tier]?.name : "No subscription"}</div>
-              <div className="text-slate-500">{school.subscription_duration ? DURS.find((d) => d.k === school.subscription_duration)?.l : "—"}</div>
+          <div className="hidden md:flex items-center gap-3 cs-card px-4 py-2 shrink-0" data-testid="school-header-user">
+            <div className="w-9 h-9 rounded-full cs-bg-navy text-white flex items-center justify-center font-bold text-xs flex-shrink-0">
+              {(school.name || "?").split(" ").filter(Boolean).slice(0, 2).map((p) => p[0]?.toUpperCase()).join("")}
+            </div>
+            <div className="text-right leading-tight">
+              <div className="text-sm font-semibold cs-text-navy truncate max-w-[200px]" data-testid="school-header-name">{school.name}</div>
+              <div className="text-[10px] uppercase tracking-wider text-slate-500" data-testid="school-header-role">School Admin</div>
             </div>
           </div>
         </div>
 
-        {/* Stat tiles */}
-        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-8">
+        {/* Status + plan row */}
+        <div className="flex flex-wrap items-center gap-3 mb-6">
+          {school.kill_switch ? (
+            <Badge className="bg-red-500 text-white">Kill-switch ACTIVE</Badge>
+          ) : (
+            <Badge className="cs-bg-green text-white">Active</Badge>
+          )}
+          <div className="text-xs cs-card px-3 py-1.5 flex items-center gap-2">
+            <span className="font-semibold cs-text-navy">{school.subscription_tier ? PRICING[school.subscription_tier]?.name : "No subscription"}</span>
+            <span className="text-slate-400">·</span>
+            <span className="text-slate-500">{school.subscription_duration ? DURS.find((d) => d.k === school.subscription_duration)?.l : "—"}</span>
+          </div>
+        </div>
+
+        {/* KPI tiles */}
+        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
           {[
             { i: Users, l: "Students", v: students.length, c: "cs-bg-navy" },
             { i: AlertTriangle, l: "Debtors", v: debtCount, c: "bg-amber-500" },
@@ -497,19 +590,11 @@ export default function SchoolAdminDashboard() {
           })}
         </div>
 
-        <Tabs value={tab} onValueChange={setTab} className="mt-10">
-          <div className="overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0 scrollbar-hide">
-            <TabsList className="inline-flex w-max sm:grid sm:grid-cols-8 sm:w-full sm:max-w-5xl">
-              <TabsTrigger value="overview" data-testid="tab-overview">Overview</TabsTrigger>
-              <TabsTrigger value="profile" data-testid="tab-profile">Profile</TabsTrigger>
-              <TabsTrigger value="classes" data-testid="tab-classes">Classes</TabsTrigger>
-              <TabsTrigger value="users" data-testid="tab-users">Users</TabsTrigger>
-              <TabsTrigger value="students" data-testid="tab-students">Students</TabsTrigger>
-              <TabsTrigger value="subjects" data-testid="tab-subjects">Subjects</TabsTrigger>
-              <TabsTrigger value="subscription" data-testid="tab-subscription">Subscription</TabsTrigger>
-              <TabsTrigger value="receipts" data-testid="tab-receipts">Receipts</TabsTrigger>
-            </TabsList>
-          </div>
+        {/* Active pane label */}
+        <h2 className="font-display text-lg font-bold cs-text-navy mb-3" data-testid="school-pane-title">{currentLabel}</h2>
+
+        <Tabs value={tab} onValueChange={setTab}>
+          {/* TabsList is hidden — navigation lives in the sidebar. We keep Tabs as the controlled context for TabsContent. */}
 
           <TabsContent value="overview" className="mt-6 grid md:grid-cols-2 gap-6">
             {/* Setup checklist */}
@@ -1051,7 +1136,7 @@ export default function SchoolAdminDashboard() {
             </div>
           </TabsContent>
         </Tabs>
-      </div>
+      </main>
 
       {/* Add student dialog */}
       <Dialog open={studentDlg} onOpenChange={setStudentDlg}>
