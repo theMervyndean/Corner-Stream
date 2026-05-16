@@ -354,14 +354,16 @@ export default function SuperAdmin() {
             </button>
           );
         })}
+        <div className="border-t border-white/10 my-2" />
+        <Button onClick={() => setOverrideOpen(true)} className="w-full bg-white/10 hover:bg-white/20 text-white rounded-md text-xs h-9 justify-start gap-2 border border-white/10 transition-all duration-200 px-2.5" data-testid="open-pw-override">
+          <KeyRound size={14} className="flex-shrink-0" /> <span className="hidden lg:inline">Password override</span>
+        </Button>
+        <Button onClick={handleLogout} className="w-full bg-red-500/15 hover:bg-red-500/30 text-white rounded-md text-xs h-9 justify-start gap-2 border border-red-400/30 transition-all duration-200 px-2.5" data-testid="sidebar-logout">
+          <LogOut size={14} className="flex-shrink-0" /> <span className="hidden lg:inline">Logout</span>
+        </Button>
       </nav>
-      <div className="p-2 border-t border-white/10 space-y-2">
-        <Button onClick={() => setOverrideOpen(true)} className="w-full bg-white/10 hover:bg-white/20 text-white rounded-md text-xs h-9 justify-start gap-2 border border-white/10 transition-all duration-200" data-testid="open-pw-override">
-          <KeyRound size={14} /> <span className="lg:inline">Password override</span>
-        </Button>
-        <Button onClick={handleLogout} className="w-full bg-red-500/15 hover:bg-red-500/30 text-white rounded-md text-xs h-9 justify-start gap-2 border border-red-400/30 transition-all duration-200" data-testid="sidebar-logout">
-          <LogOut size={14} /> <span className="lg:inline">Logout</span>
-        </Button>
+      <div className="p-2 border-t border-white/10 space-y-2 hidden">
+        {/* Buttons moved inline above the nav for proximity */}
       </div>
     </div>
   );
@@ -772,36 +774,39 @@ export default function SuperAdmin() {
         </div>
       )}
 
-      <main className="sm:ml-16 lg:ml-64 xl:ml-72 px-4 sm:px-6 lg:px-10 xl:px-12 py-6 max-w-[1800px] transition-all duration-300" data-testid="super-admin">
-        {/* Slim top header with page title + user identity on the far right */}
-        <div className="flex items-center justify-between mb-4 sm:mb-6 gap-3">
-          <div className="flex items-center gap-3 min-w-0">
-            <button className="sm:hidden p-2 rounded-md border border-slate-200 bg-white" onClick={() => setDrawerOpen(true)} data-testid="super-hamburger"><Menu size={18} /></button>
-            <div className="min-w-0">
-              <span className="eyebrow">CORNER STREAMS</span>
-              <h1 className="font-display text-2xl sm:text-3xl font-bold cs-text-navy mt-1 truncate" data-testid="super-title">Super Admin Dashboard</h1>
-              <p className="text-xs text-slate-500 mt-0.5">{currentLabel}</p>
+      <main className="sm:ml-16 lg:ml-64 xl:ml-72 pt-14 transition-all duration-300" data-testid="super-admin">
+        {/* Sticky in-page header — stays below the fixed Navbar when scrolling */}
+        <div className="sticky top-14 z-20 bg-slate-50/95 backdrop-blur border-b border-slate-200 px-4 sm:px-6 lg:px-10 xl:px-12 py-3">
+          <div className="max-w-[1800px] flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3 min-w-0">
+              <button className="sm:hidden p-2 rounded-md border border-slate-200 bg-white" onClick={() => setDrawerOpen(true)} data-testid="super-hamburger"><Menu size={18} /></button>
+              <div className="min-w-0">
+                <span className="eyebrow">CORNER STREAMS</span>
+                <h1 className="font-display text-xl sm:text-2xl font-bold cs-text-navy mt-0.5 truncate" data-testid="super-title">Super Admin · {currentLabel}</h1>
+              </div>
             </div>
+            {authUser && typeof authUser === "object" && (
+              <div className="hidden md:flex items-center gap-3 cs-card px-4 py-2 shrink-0" data-testid="super-header-user">
+                <div className="w-9 h-9 rounded-full cs-bg-navy text-white flex items-center justify-center font-bold text-xs flex-shrink-0">
+                  {(authUser.name || authUser.email || "?").split(" ").filter(Boolean).slice(0, 2).map((p) => p[0]?.toUpperCase()).join("")}
+                </div>
+                <div className="text-right leading-tight">
+                  <div className="text-sm font-semibold cs-text-navy" data-testid="super-header-username">{authUser.name || authUser.email}</div>
+                  <div className="text-[10px] uppercase tracking-wider text-slate-500" data-testid="super-header-userrole">Super Admin</div>
+                </div>
+              </div>
+            )}
           </div>
-          {authUser && typeof authUser === "object" && (
-            <div className="hidden md:flex items-center gap-3 cs-card px-4 py-2 shrink-0" data-testid="super-header-user">
-              <div className="w-9 h-9 rounded-full cs-bg-navy text-white flex items-center justify-center font-bold text-xs flex-shrink-0">
-                {(authUser.name || authUser.email || "?").split(" ").filter(Boolean).slice(0, 2).map((p) => p[0]?.toUpperCase()).join("")}
-              </div>
-              <div className="text-right leading-tight">
-                <div className="text-sm font-semibold cs-text-navy" data-testid="super-header-username">{authUser.name || authUser.email}</div>
-                <div className="text-[10px] uppercase tracking-wider text-slate-500" data-testid="super-header-userrole">Super Admin</div>
-              </div>
-            </div>
-          )}
         </div>
 
-        {KpiRow}
+        <div className="px-4 sm:px-6 lg:px-10 xl:px-12 py-6 max-w-[1800px]">
+          {KpiRow}
 
-        <div className="mt-2">
-          <h2 className="font-display text-lg font-bold cs-text-navy mb-3">{currentLabel}</h2>
-          <div key={tab} className="cs-pane-fade" data-testid={`super-pane-${tab}`}>
-            {paneBody}
+          <div className="mt-2">
+            <h2 className="font-display text-lg font-bold cs-text-navy mb-3">{currentLabel}</h2>
+            <div key={tab} className="cs-pane-fade" data-testid={`super-pane-${tab}`}>
+              {paneBody}
+            </div>
           </div>
         </div>
       </main>

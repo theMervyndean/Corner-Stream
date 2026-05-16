@@ -36,8 +36,8 @@ export default function Navbar({ variant = "landing" }) {
   const isPromoted = isAuth && user.is_admin && user.role !== "school_admin";
 
   return (
-    <header className={`w-full ${variant === "dashboard" ? "bg-white border-b border-[#E2E8F0] sticky top-0 z-40 shadow-sm" : "bg-transparent"}`}>
-      <div className={`${variant === "dashboard" ? "w-full pl-3 pr-4 sm:pl-4 sm:pr-6" : "max-w-7xl mx-auto px-4 sm:px-6"} flex items-center justify-between py-3 gap-2`}>
+    <header className={`w-full ${variant === "dashboard" ? "bg-white border-b border-[#E2E8F0] fixed top-0 left-0 right-0 z-40 h-14 shadow-sm" : "bg-transparent"}`}>
+      <div className={`${variant === "dashboard" ? "w-full pl-3 pr-4 sm:pl-4 sm:pr-6 h-full" : "max-w-7xl mx-auto px-4 sm:px-6 py-3"} flex items-center justify-between gap-2`}>
         <Link to="/" data-testid="nav-home-link" className="flex items-center gap-2 min-w-0">
           <Logo />
           <span className="hidden sm:inline text-[10px] font-bold tracking-wider px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300 shrink-0" data-testid="nav-beta-badge">BETA</span>

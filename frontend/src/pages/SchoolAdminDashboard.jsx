@@ -495,12 +495,12 @@ export default function SchoolAdminDashboard() {
             </button>
           );
         })}
-      </nav>
-      <div className="p-2 border-t border-white/10 space-y-2">
-        <Button onClick={handleLogout} className="w-full bg-red-500/15 hover:bg-red-500/30 text-white rounded-md text-xs h-9 justify-start gap-2 border border-red-400/30 transition-all duration-200" data-testid="school-sidebar-logout">
-          <LogOut size={14} /> <span className="hidden lg:inline">Logout</span>
+        <div className="border-t border-white/10 my-2" />
+        <Button onClick={handleLogout} className="w-full bg-red-500/15 hover:bg-red-500/30 text-white rounded-md text-xs h-9 justify-start gap-2 border border-red-400/30 transition-all duration-200 px-2.5" data-testid="school-sidebar-logout">
+          <LogOut size={14} className="flex-shrink-0" /> <span className="hidden lg:inline">Logout</span>
         </Button>
-      </div>
+      </nav>
+      <div className="hidden">{/* spacer */}</div>
     </div>
   );
 
@@ -533,68 +533,68 @@ export default function SchoolAdminDashboard() {
         </div>
       )}
 
-      <main className="sm:ml-16 lg:ml-64 xl:ml-72 px-4 sm:px-6 lg:px-10 xl:px-12 py-6 max-w-[1800px] transition-all duration-300" data-testid="school-admin-dashboard">
-        {/* Top header — page title + school name & role on far right */}
-        <div className="flex items-center justify-between mb-4 sm:mb-6 gap-3">
-          <div className="flex items-center gap-3 min-w-0">
-            <button className="sm:hidden p-2 rounded-md border border-slate-200 bg-white" onClick={() => setDrawerOpen(true)} data-testid="school-hamburger"><Menu size={18} /></button>
-            <div className="min-w-0">
-              <span className="eyebrow">SCHOOL ADMIN</span>
-              <h1 className="font-display text-2xl sm:text-3xl font-bold cs-text-navy mt-1 truncate" data-testid="school-title">{school.name}</h1>
-              <div className="text-xs sm:text-sm text-slate-500 mt-0.5 truncate">{school.address || "—"} · Principal: {school.principal_name || "—"}</div>
-            </div>
-          </div>
-          <div className="hidden md:flex items-center gap-3 cs-card px-4 py-2 shrink-0" data-testid="school-header-user">
-            <div className="w-9 h-9 rounded-full cs-bg-navy text-white flex items-center justify-center font-bold text-xs flex-shrink-0">
-              {(school.name || "?").split(" ").filter(Boolean).slice(0, 2).map((p) => p[0]?.toUpperCase()).join("")}
-            </div>
-            <div className="text-right leading-tight">
-              <div className="text-sm font-semibold cs-text-navy truncate max-w-[200px]" data-testid="school-header-name">{school.name}</div>
-              <div className="text-[10px] uppercase tracking-wider text-slate-500" data-testid="school-header-role">School Admin</div>
-            </div>
-          </div>
-        </div>
-
-        {/* Status + plan row */}
-        <div className="flex flex-wrap items-center gap-3 mb-6">
-          {school.kill_switch ? (
-            <Badge className="bg-red-500 text-white">Kill-switch ACTIVE</Badge>
-          ) : (
-            <Badge className="cs-bg-green text-white">Active</Badge>
-          )}
-          <div className="text-xs cs-card px-3 py-1.5 flex items-center gap-2">
-            <span className="font-semibold cs-text-navy">{school.subscription_tier ? PRICING[school.subscription_tier]?.name : "No subscription"}</span>
-            <span className="text-slate-400">·</span>
-            <span className="text-slate-500">{school.subscription_duration ? DURS.find((d) => d.k === school.subscription_duration)?.l : "—"}</span>
-          </div>
-        </div>
-
-        {/* KPI tiles */}
-        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          {[
-            { i: Users, l: "Students", v: students.length, c: "cs-bg-navy" },
-            { i: AlertTriangle, l: "Debtors", v: debtCount, c: "bg-amber-500" },
-            { i: Receipt, l: "Total debt (₦)", v: totalDebt.toLocaleString(), c: "cs-bg-blue" },
-            { i: FileBarChart, l: "Receipts", v: receipts.length, c: "cs-bg-green" },
-          ].map((s, i) => {
-            const Icon = s.i;
-            return (
-              <div key={i} className="cs-card p-5 flex items-center gap-4" data-testid={`stat-${i}`}>
-                <div className={`w-11 h-11 rounded-lg ${s.c} text-white flex items-center justify-center`}><Icon size={20} /></div>
-                <div>
-                  <div className="text-xs text-slate-500">{s.l}</div>
-                  <div className="font-display text-2xl font-bold cs-text-navy">{s.v}</div>
-                </div>
+      <main className="sm:ml-16 lg:ml-64 xl:ml-72 pt-14 transition-all duration-300" data-testid="school-admin-dashboard">
+        {/* Sticky in-page header — pinned below the fixed Navbar when scrolling */}
+        <div className="sticky top-14 z-20 bg-slate-50/95 backdrop-blur border-b border-slate-200 px-4 sm:px-6 lg:px-10 xl:px-12 py-3">
+          <div className="max-w-[1800px] flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3 min-w-0">
+              <button className="sm:hidden p-2 rounded-md border border-slate-200 bg-white" onClick={() => setDrawerOpen(true)} data-testid="school-hamburger"><Menu size={18} /></button>
+              <div className="min-w-0">
+                <span className="eyebrow">SCHOOL ADMIN</span>
+                <h1 className="font-display text-xl sm:text-2xl font-bold cs-text-navy mt-0.5 truncate" data-testid="school-title">{school.name} · {currentLabel}</h1>
               </div>
-            );
-          })}
+            </div>
+            <div className="hidden md:flex items-center gap-3 cs-card px-4 py-2 shrink-0" data-testid="school-header-user">
+              <div className="w-9 h-9 rounded-full cs-bg-navy text-white flex items-center justify-center font-bold text-xs flex-shrink-0">
+                {(school.name || "?").split(" ").filter(Boolean).slice(0, 2).map((p) => p[0]?.toUpperCase()).join("")}
+              </div>
+              <div className="text-right leading-tight">
+                <div className="text-sm font-semibold cs-text-navy truncate max-w-[200px]" data-testid="school-header-name">{school.name}</div>
+                <div className="text-[10px] uppercase tracking-wider text-slate-500" data-testid="school-header-role">School Admin</div>
+              </div>
+            </div>
+          </div>
         </div>
 
-        {/* Active pane label */}
-        <h2 className="font-display text-lg font-bold cs-text-navy mb-3" data-testid="school-pane-title">{currentLabel}</h2>
+        <div className="px-4 sm:px-6 lg:px-10 xl:px-12 py-6 max-w-[1800px]">
+          {/* Status + plan row */}
+          <div className="flex flex-wrap items-center gap-3 mb-6">
+            {school.kill_switch ? (
+              <Badge className="bg-red-500 text-white">Kill-switch ACTIVE</Badge>
+            ) : (
+              <Badge className="cs-bg-green text-white">Active</Badge>
+            )}
+            <div className="text-xs cs-card px-3 py-1.5 flex items-center gap-2">
+              <span className="font-semibold cs-text-navy">{school.subscription_tier ? PRICING[school.subscription_tier]?.name : "No subscription"}</span>
+              <span className="text-slate-400">·</span>
+              <span className="text-slate-500">{school.subscription_duration ? DURS.find((d) => d.k === school.subscription_duration)?.l : "—"}</span>
+            </div>
+            <div className="text-xs text-slate-500 truncate">{school.address || ""}{school.principal_name ? ` · Principal: ${school.principal_name}` : ""}</div>
+          </div>
 
-        <Tabs value={tab} onValueChange={setTab}>
-          {/* TabsList is hidden — navigation lives in the sidebar. We keep Tabs as the controlled context for TabsContent. */}
+          {/* KPI tiles */}
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+            {[
+              { i: Users, l: "Students", v: students.length, c: "cs-bg-navy" },
+              { i: AlertTriangle, l: "Debtors", v: debtCount, c: "bg-amber-500" },
+              { i: Receipt, l: "Total debt (₦)", v: totalDebt.toLocaleString(), c: "cs-bg-blue" },
+              { i: FileBarChart, l: "Receipts", v: receipts.length, c: "cs-bg-green" },
+            ].map((s, i) => {
+              const Icon = s.i;
+              return (
+                <div key={i} className="cs-card p-5 flex items-center gap-4" data-testid={`stat-${i}`}>
+                  <div className={`w-11 h-11 rounded-lg ${s.c} text-white flex items-center justify-center`}><Icon size={20} /></div>
+                  <div>
+                    <div className="text-xs text-slate-500">{s.l}</div>
+                    <div className="font-display text-2xl font-bold cs-text-navy">{s.v}</div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <Tabs value={tab} onValueChange={setTab}>
+            {/* TabsList is hidden — navigation lives in the sidebar. We keep Tabs as the controlled context for TabsContent. */}
 
           <TabsContent value="overview" className="mt-6 grid md:grid-cols-2 gap-6">
             {/* Setup checklist */}
@@ -1136,6 +1136,7 @@ export default function SchoolAdminDashboard() {
             </div>
           </TabsContent>
         </Tabs>
+        </div>
       </main>
 
       {/* Add student dialog */}
