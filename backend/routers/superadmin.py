@@ -220,3 +220,34 @@ async def list_all_students(user: dict = Depends(require_roles("super_admin")), 
         s["school_name"] = name_by_id.get(s.get("school_id"), "—")
     return {"students": students}
 
+
+class TierUpdateIn(BaseModel):
+    tier: str
+    duration: Optional[str] = "full_session"
+
+
+@router.patch("/schools/{school_id}/tier")
+async def update_school_tier(school_id: str, payload: TierUpdateIn, user: dict = Depends(require_roles("super_admin"))):
+    """Super admin: change a school's subscription tier (and reset expiry)."""
+    from datetime import datetime, timezone, timedelta
+    allowed = {"cbt_essentials", "digital_reports", "financial_ledger", "unified_enterprise"}
+    if payload.tier not in allowed:
+        raise HTTPException(status_code=400, detail=f"tier must be one of {sorted(allowed)}")
+    days = {"1_term": 90, "2_terms": 180, "full_session": 270}.get(payload.duration or "full_session", 270)
+    expires = (datetime.now(timezone.utc) + timedelta(days=days)).isoformat()
+    db = get_db()
+    res = await db.schools.update_one(
+        {"id": school_id},
+        {"$set": {
+            "subscription_tier": payload.tier,
+            "subscription_duration": payload.duration or "full_session",
+            "subscription_expires_at": expires,
+            "updated_at": now_iso(),
+        }},
+    )
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="School not found")
+    school = await db.schools.find_one({"id": school_id}, {"_id": 0})
+    return {"ok": True, "school": school}
+
+

@@ -12,6 +12,7 @@ import { toast } from "sonner";
 import {
   Building2, Users, GraduationCap, Inbox, AlertTriangle, ShieldCheck,
   Receipt, BarChart3, UserPlus, KeyRound, Eye, Menu, X, ChevronRight,
+  Calendar, Pause, Play, Award, Wallet, BookOpen, Layers, Settings2,
 } from "lucide-react";
 import { ChartCard, GrowthArea, DonutChart, BarSimple } from "@/components/Charts.jsx";
 
@@ -115,6 +116,24 @@ export default function SuperAdmin() {
     } catch (e) { toast.error(formatApiError(e.response?.data?.detail) || e.message); }
   };
 
+  const updateTier = async (schoolId, tier) => {
+    if (!window.confirm(`Switch this school to ${tier.replace(/_/g, " ")}? Subscription expiry resets to today + full session.`)) return;
+    try {
+      await api.patch(`/superadmin/schools/${schoolId}/tier`, { tier, duration: "full_session" });
+      toast.success(`Tier updated → ${tier.replace(/_/g, " ")}`);
+      refresh();
+    } catch (e) { toast.error(formatApiError(e.response?.data?.detail) || e.message); }
+  };
+  const cancelSubscription = async (schoolId, schoolName) => {
+    if (!window.confirm(`Cancel subscription for ${schoolName}? This pauses the dashboard AND marks the school as rejected. Use with care.`)) return;
+    try {
+      await api.post(`/superadmin/schools/${schoolId}/kill-switch`, { kill_switch: true });
+      await api.post(`/superadmin/schools/${schoolId}/verify`, { decision: "reject", note: "Subscription cancelled by Super Admin" });
+      toast.success("Subscription cancelled");
+      refresh();
+    } catch (e) { toast.error(formatApiError(e.response?.data?.detail) || e.message); }
+  };
+
   // ---- derived counts ----
   const openLeads = useMemo(() => leads.filter((l) => !l.resolved), [leads]);
   const badge = (key) => {
@@ -150,31 +169,145 @@ export default function SuperAdmin() {
     </div>
   );
 
-  const SchoolsPane = () => (
-    <div className="cs-card overflow-x-auto">
-      <Table>
-        <TableHeader><TableRow className="cs-bg-navy hover:cs-bg-navy">
-          <TableHead className="text-white">School</TableHead>
-          <TableHead className="text-white">Tier</TableHead>
-          <TableHead className="text-white">Type</TableHead>
-          <TableHead className="text-white">Status</TableHead>
-          <TableHead className="text-white">Kill-switch</TableHead>
-        </TableRow></TableHeader>
-        <TableBody>
-          {schools.map((sc, i) => (
-            <TableRow key={sc.id} className={i % 2 ? "bg-slate-50" : ""} data-testid={`school-row-${sc.id}`}>
-              <TableCell className="font-medium text-sm">{sc.name}</TableCell>
-              <TableCell className="text-xs">{(sc.subscription_tier || "—").replace(/_/g, " ")}</TableCell>
-              <TableCell className="text-xs capitalize">{sc.school_type || "—"}</TableCell>
-              <TableCell><Badge className={sc.verification_status === "active" ? "cs-bg-green text-white" : "bg-amber-500 text-white"}>{sc.verification_status || "—"}</Badge></TableCell>
-              <TableCell><Switch checked={!!sc.kill_switch} onCheckedChange={() => toggleKill(sc.id, sc.kill_switch)} data-testid={`kill-${sc.id}`} /></TableCell>
-            </TableRow>
-          ))}
-          {!schools.length && <TableRow><TableCell colSpan={5} className="text-center text-slate-500 py-8">No schools registered.</TableCell></TableRow>}
-        </TableBody>
-      </Table>
-    </div>
-  );
+  // Schools pane: tier filter + responsive card grid
+  const TIER_META = [
+    { key: "cbt_essentials",     label: "CBT Exams",          icon: BookOpen,  color: "#0056B3" },
+    { key: "financial_ledger",   label: "Financial Reports",  icon: Wallet,    color: "#28A745" },
+    { key: "digital_reports",    label: "Digital Results",    icon: Award,     color: "#002147" },
+    { key: "unified_enterprise", label: "Unified Enterprise", icon: Layers,    color: "#7c3aed" },
+  ];
+  const [tierFilter, setTierFilter] = useState("all");
+
+  const SchoolsPane = () => {
+    const counts = useMemo(() => {
+      const c = { all: schools.length };
+      TIER_META.forEach((t) => { c[t.key] = schools.filter((s) => s.subscription_tier === t.key).length; });
+      return c;
+    }, []);
+    const filtered = tierFilter === "all" ? schools : schools.filter((s) => s.subscription_tier === tierFilter);
+
+    const SchoolCard = ({ s }) => {
+      const tierMeta = TIER_META.find((t) => t.key === s.subscription_tier);
+      const active = s.verification_status === "active" && !s.kill_switch;
+      const expires = s.subscription_expires_at ? new Date(s.subscription_expires_at) : null;
+      const daysLeft = expires ? Math.ceil((expires - new Date()) / (1000 * 60 * 60 * 24)) : null;
+      const expColor = daysLeft == null ? "text-slate-400"
+        : daysLeft < 0 ? "text-red-600"
+        : daysLeft <= 14 ? "text-red-600"
+        : daysLeft <= 30 ? "text-amber-600"
+        : "text-slate-600";
+      const TierIcon = tierMeta?.icon || Building2;
+      const [tierOpen, setTierOpen] = useState(false);
+      return (
+        <div className="cs-card p-5 flex flex-col gap-3 border-t-4" style={{ borderTopColor: tierMeta?.color || "#64748b" }} data-testid={`school-card-${s.id}`}>
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0 flex-1">
+              <div className="font-display font-bold cs-text-navy text-base truncate" title={s.name}>{s.name}</div>
+              <div className="text-[11px] text-slate-500 capitalize">{s.school_type || "—"} · Registered {(s.created_at || "").slice(0, 10)}</div>
+            </div>
+            <Badge className={active ? "cs-bg-green text-white" : s.kill_switch ? "bg-red-500 text-white" : "bg-amber-500 text-white"} data-testid={`school-status-${s.id}`}>
+              {active ? "Active" : s.kill_switch ? "Paused" : s.verification_status || "Pending"}
+            </Badge>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2 text-xs">
+            <div className="rounded-md p-2 flex items-center gap-2" style={{ backgroundColor: `${tierMeta?.color || "#64748b"}15` }}>
+              <TierIcon size={14} style={{ color: tierMeta?.color || "#64748b" }} />
+              <div className="min-w-0">
+                <div className="text-[10px] text-slate-500 uppercase">Plan</div>
+                <div className="font-semibold truncate" style={{ color: tierMeta?.color || "#64748b" }}>{tierMeta?.label || (s.subscription_tier || "—").replace(/_/g, " ")}</div>
+              </div>
+            </div>
+            <div className="rounded-md p-2 flex items-center gap-2 bg-slate-50">
+              <Calendar size={14} className="text-slate-500 flex-shrink-0" />
+              <div className="min-w-0">
+                <div className="text-[10px] text-slate-500 uppercase">Expires</div>
+                <div className={`font-semibold ${expColor}`} data-testid={`school-deadline-${s.id}`}>
+                  {expires ? expires.toISOString().slice(0, 10) : "—"}
+                  {daysLeft != null && <span className="ml-1 text-[10px]">({daysLeft < 0 ? "expired" : `${daysLeft}d`})</span>}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between gap-2 pt-2 border-t">
+            <Switch checked={!!s.kill_switch} onCheckedChange={() => toggleKill(s.id, s.kill_switch)} data-testid={`kill-${s.id}`} title={s.kill_switch ? "Resume school" : "Pause school"} />
+            <span className="text-[10px] text-slate-500 -ml-1 flex-1">{s.kill_switch ? "Paused" : "Active"}</span>
+            <Button size="sm" variant="outline" onClick={() => setTierOpen((v) => !v)} className="text-xs" data-testid={`upgrade-btn-${s.id}`}>
+              <Settings2 size={12} className="mr-1" /> Plan
+            </Button>
+            <Button size="sm" variant="destructive" onClick={() => cancelSubscription(s.id, s.name)} className="text-xs" data-testid={`cancel-btn-${s.id}`}>Cancel</Button>
+          </div>
+
+          {tierOpen && (
+            <div className="mt-1 grid grid-cols-2 gap-2 p-2 rounded-md bg-slate-50 border">
+              {TIER_META.map((t) => {
+                const TIcon = t.icon;
+                const isCurrent = s.subscription_tier === t.key;
+                return (
+                  <button
+                    key={t.key}
+                    onClick={() => { setTierOpen(false); if (!isCurrent) updateTier(s.id, t.key); }}
+                    className={`flex items-center gap-2 px-2 py-1.5 rounded text-[11px] font-semibold transition ${isCurrent ? "bg-white border-2" : "bg-white border hover:shadow-sm"}`}
+                    style={{ borderColor: isCurrent ? t.color : undefined, color: t.color }}
+                    disabled={isCurrent}
+                    data-testid={`tier-opt-${s.id}-${t.key}`}
+                  >
+                    <TIcon size={12} /> {t.label}{isCurrent && " ✓"}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      );
+    };
+
+    return (
+      <div>
+        {/* Tier filter row */}
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-5" data-testid="school-tier-filters">
+          <button
+            onClick={() => setTierFilter("all")}
+            className={`cs-card p-3 text-left transition ${tierFilter === "all" ? "ring-2 ring-slate-900 shadow-md" : "hover:shadow-md"}`}
+            data-testid="tier-filter-all"
+          >
+            <div className="text-[10px] uppercase tracking-wider text-slate-500">All schools</div>
+            <div className="font-display text-2xl font-bold cs-text-navy mt-1">{counts.all}</div>
+          </button>
+          {TIER_META.map((t) => {
+            const Icon = t.icon;
+            const isActive = tierFilter === t.key;
+            return (
+              <button
+                key={t.key}
+                onClick={() => setTierFilter(t.key)}
+                className={`cs-card p-3 text-left transition border-l-4 ${isActive ? "shadow-md ring-2" : "hover:shadow-md"}`}
+                style={{ borderLeftColor: t.color, ...(isActive ? { ringColor: t.color } : {}) }}
+                data-testid={`tier-filter-${t.key}`}
+              >
+                <div className="flex items-center gap-2">
+                  <Icon size={14} style={{ color: t.color }} />
+                  <div className="text-[10px] uppercase tracking-wider text-slate-500 truncate">{t.label}</div>
+                </div>
+                <div className="font-display text-2xl font-bold mt-1" style={{ color: t.color }}>{counts[t.key]}</div>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Cards grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4" data-testid="school-cards-grid">
+          {filtered.map((s) => <SchoolCard key={s.id} s={s} />)}
+          {!filtered.length && (
+            <div className="col-span-full cs-card p-10 text-center text-slate-500">
+              {tierFilter === "all" ? "No schools registered." : `No schools on the ${TIER_META.find((t) => t.key === tierFilter)?.label} plan yet.`}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
 
   const UsersPane = () => (
     <div className="cs-card overflow-x-auto">
