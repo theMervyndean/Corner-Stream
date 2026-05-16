@@ -774,9 +774,9 @@ export default function SuperAdmin() {
         </div>
       )}
 
-      <main className="sm:ml-16 lg:ml-64 xl:ml-72 pt-14 transition-all duration-300" data-testid="super-admin">
-        {/* Sticky in-page header — stays below the fixed Navbar when scrolling */}
-        <div className="sticky top-14 z-20 bg-slate-50/95 backdrop-blur border-b border-slate-200 px-4 sm:px-6 lg:px-10 xl:px-12 py-3">
+      <main className="sm:ml-16 lg:ml-64 xl:ml-72 pt-[120px] transition-all duration-300" data-testid="super-admin">
+        {/* Fixed in-page header — pinned below the fixed Navbar, offset by sidebar width */}
+        <div className="fixed top-14 left-0 sm:left-16 lg:left-64 xl:left-72 right-0 z-20 bg-slate-50 border-b border-slate-200 px-4 sm:px-6 lg:px-10 xl:px-12 py-3 transition-all duration-300">
           <div className="max-w-[1800px] flex items-center justify-between gap-3">
             <div className="flex items-center gap-3 min-w-0">
               <button className="sm:hidden p-2 rounded-md border border-slate-200 bg-white" onClick={() => setDrawerOpen(true)} data-testid="super-hamburger"><Menu size={18} /></button>
