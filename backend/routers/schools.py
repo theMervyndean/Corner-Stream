@@ -25,6 +25,9 @@ class SchoolUpdate(BaseModel):
     ca_max: Optional[int] = Field(default=None, ge=0, le=100)
     exam_max: Optional[int] = Field(default=None, ge=0, le=100)
     ca_count: Optional[int] = Field(default=None, ge=1, le=6)
+    # New per-column CA weight model. Length 2..5, each ≥ 1.
+    # When provided alongside exam_max, sum(ca_weights) + exam_max must equal 100.
+    ca_weights: Optional[List[int]] = None
 
 
 @router.get("/me")
@@ -62,8 +65,35 @@ async def update_my_school(payload: SchoolUpdate, user: dict = Depends(require_r
         update["classes"] = cleaned
     if "school_type" in update and update["school_type"] not in SCHOOL_TYPES:
         raise HTTPException(status_code=400, detail="Invalid school_type")
-    # Validate CA + Exam add to 100 when both provided
-    if update.get("ca_max") is not None and update.get("exam_max") is not None:
+    # ── Assessment structure (CA columns + exam) ──
+    # Per-column CA weight model. Validate first; then derive ca_max / ca_count
+    # so legacy clients reading those scalar fields stay consistent.
+    if update.get("ca_weights") is not None:
+        weights = update["ca_weights"]
+        if not isinstance(weights, list) or not (2 <= len(weights) <= 5):
+            raise HTTPException(status_code=400, detail="CA columns must be between 2 and 5")
+        try:
+            weights = [int(w) for w in weights]
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="CA weights must be integers")
+        if any(w < 1 for w in weights):
+            raise HTTPException(status_code=400, detail="Each CA weight must be at least 1")
+        # Resolve exam_max: prefer the incoming value, else fall back to existing school doc
+        if update.get("exam_max") is not None:
+            exam_val = int(update["exam_max"])
+        else:
+            current = await db.schools.find_one({"id": user["school_id"]}, {"_id": 0, "exam_max": 1})
+            exam_val = int((current or {}).get("exam_max") or 0)
+        if exam_val < 1:
+            raise HTTPException(status_code=400, detail="Exam max must be at least 1")
+        if sum(weights) + exam_val != 100:
+            raise HTTPException(status_code=400, detail=f"CA weights ({sum(weights)}) + Exam ({exam_val}) must total 100")
+        update["ca_weights"] = weights
+        update["ca_max"] = sum(weights)
+        update["ca_count"] = len(weights)
+        update["exam_max"] = exam_val
+    # Legacy fallback: when only ca_max/exam_max are provided (no ca_weights), keep the old rule.
+    elif update.get("ca_max") is not None and update.get("exam_max") is not None:
         if int(update["ca_max"]) + int(update["exam_max"]) != 100:
             raise HTTPException(status_code=400, detail="CA + Exam max scores must add to 100")
     update["updated_at"] = now_iso()

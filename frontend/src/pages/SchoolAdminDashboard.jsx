@@ -88,7 +88,7 @@ export default function SchoolAdminDashboard() {
   const [loginForm, setLoginForm] = useState({ email: "", password: "" });
 
   // Profile
-  const [profileForm, setProfileForm] = useState({ name: "", principal_name: "", address: "", phone: "", email: "", motto: "", logo_url: "", founded_year: "", website: "", brand_color: "#002147", ca_max: 40, exam_max: 60, ca_count: 1 });
+  const [profileForm, setProfileForm] = useState({ name: "", principal_name: "", address: "", phone: "", email: "", motto: "", logo_url: "", founded_year: "", website: "", brand_color: "#002147", ca_weights: [20, 20], exam_max: 60 });
   // Class rename
   const [renamingClass, setRenamingClass] = useState(null); // {old: "JSS 1", new: "JSS 1A"}
   // Analytics
@@ -233,7 +233,9 @@ export default function SchoolAdminDashboard() {
         phone: s.phone || "", email: s.email || "", motto: s.motto || "",
         logo_url: s.logo_url || "", founded_year: s.founded_year || "", website: s.website || "",
         brand_color: s.brand_color || "#002147",
-        ca_max: s.ca_max ?? 40, exam_max: s.exam_max ?? 60, ca_count: s.ca_count ?? 1,
+        // Read ca_weights if present; else synthesize from legacy ca_max into a single-column array
+        ca_weights: (Array.isArray(s.ca_weights) && s.ca_weights.length > 0) ? s.ca_weights : [s.ca_max ?? 40],
+        exam_max: s.exam_max ?? 60,
       });
     } catch (e) {
       toast.error(formatApiError(e.response?.data?.detail) || e.message);
@@ -800,24 +802,68 @@ export default function SchoolAdminDashboard() {
                       <Input value={profileForm.brand_color} onChange={(e) => setProfileForm({ ...profileForm, brand_color: e.target.value })} className="font-mono" data-testid="profile-brand-color-hex" />
                     </div>
                   </div>
-                  <div className="grid grid-cols-3 gap-2">
-                    <div>
-                      <Label>CA max</Label>
-                      <Input type="number" min={0} max={100} value={profileForm.ca_max} onChange={(e) => setProfileForm({ ...profileForm, ca_max: Number(e.target.value) })} data-testid="profile-ca-max" />
-                    </div>
-                    <div>
-                      <Label>Exam max</Label>
-                      <Input type="number" min={0} max={100} value={profileForm.exam_max} onChange={(e) => setProfileForm({ ...profileForm, exam_max: Number(e.target.value) })} data-testid="profile-exam-max" />
-                    </div>
-                    <div>
-                      <Label>CAs</Label>
-                      <Input type="number" min={1} max={6} value={profileForm.ca_count} onChange={(e) => setProfileForm({ ...profileForm, ca_count: Number(e.target.value) })} data-testid="profile-ca-count" />
-                    </div>
+                  <div className="sm:col-span-2">
+                    <Label>Assessment structure (CA columns + Exam)</Label>
+                    {(() => {
+                      const weights = profileForm.ca_weights || [];
+                      const examMax = Number(profileForm.exam_max || 0);
+                      const caSum = weights.reduce((a, b) => a + Number(b || 0), 0);
+                      const total = caSum + examMax;
+                      const valid = total === 100 && weights.length >= 2 && weights.length <= 5 && weights.every((w) => Number(w) >= 1) && examMax >= 1;
+                      const setCount = (n) => {
+                        const next = [...weights];
+                        if (n > next.length) while (next.length < n) next.push(5);
+                        else next.length = n;
+                        setProfileForm({ ...profileForm, ca_weights: next });
+                      };
+                      const setWeightAt = (idx, val) => {
+                        const next = [...weights];
+                        next[idx] = Number(val) || 0;
+                        setProfileForm({ ...profileForm, ca_weights: next });
+                      };
+                      return (
+                        <div className="mt-2 space-y-3" data-testid="assessment-structure">
+                          <div className="flex flex-wrap items-center gap-3">
+                            <Label className="text-xs text-slate-500 mb-0">Number of CA columns</Label>
+                            <div className="inline-flex rounded-md border overflow-hidden">
+                              <Button type="button" variant="ghost" size="sm" className="rounded-none h-9 px-3" onClick={() => weights.length > 2 && setCount(weights.length - 1)} disabled={weights.length <= 2} data-testid="ca-count-dec">−</Button>
+                              <div className="px-4 h-9 flex items-center justify-center text-sm font-semibold cs-text-navy bg-slate-50 min-w-[3rem]" data-testid="ca-count-value">{weights.length}</div>
+                              <Button type="button" variant="ghost" size="sm" className="rounded-none h-9 px-3" onClick={() => weights.length < 5 && setCount(weights.length + 1)} disabled={weights.length >= 5} data-testid="ca-count-inc">+</Button>
+                            </div>
+                            <span className="text-xs text-slate-500">Min 2 · Max 5</span>
+                          </div>
+
+                          <div className="grid sm:grid-cols-6 gap-2">
+                            {weights.map((w, i) => (
+                              <div key={i}>
+                                <Label className="text-xs text-slate-500">CA{i + 1} max</Label>
+                                <Input type="number" min={1} max={100} value={w} onChange={(e) => setWeightAt(i, e.target.value)} data-testid={`ca-weight-${i}`} />
+                              </div>
+                            ))}
+                            <div>
+                              <Label className="text-xs text-slate-500">Exam max</Label>
+                              <Input type="number" min={1} max={100} value={profileForm.exam_max} onChange={(e) => setProfileForm({ ...profileForm, exam_max: Number(e.target.value) })} data-testid="profile-exam-max" />
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-3">
+                            <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold ${valid ? "cs-bg-green text-white" : "bg-red-100 text-red-700 border border-red-200"}`} data-testid="ca-total-badge">
+                              <span>Total maximum: {total} / 100</span>
+                              {valid ? <CheckCircle2 size={14} /> : <AlertTriangle size={14} />}
+                            </div>
+                            {!valid && (
+                              <span className="text-xs text-red-600" data-testid="ca-total-help">Maximums must sum to exactly 100. Adjust the CA weights or Exam max.</span>
+                            )}
+                          </div>
+
+                          <p className="text-[11px] text-slate-500">
+                            Defines the maximum marks a teacher can enter per column. Students score any value up to each max. WAEC-style example: <strong>4 × 5 CA + 80 Exam</strong>. Older format: <strong>2 × 20 CA + 60 Exam</strong>.
+                          </p>
+                        </div>
+                      );
+                    })()}
                   </div>
                 </div>
-                <p className="text-[11px] text-slate-500 mt-2">
-                  CA + Exam must total 100. Default is 40 + 60 (1 CA column). WAEC-style schools typically use 20 + 80 (4 CAs of 5 each).
-                </p>
               </div>
 
               <div className="mt-6 flex justify-end">

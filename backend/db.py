@@ -168,6 +168,14 @@ async def seed_demo_data():
     await db.schools.update_many({"brand_color": None}, {"$set": {"brand_color": "#002147"}})
     # Backfill default score model: 40 CA + 60 Exam with 1 CA column (matches existing data)
     await db.schools.update_many({"ca_max": {"$exists": False}}, {"$set": {"ca_max": 40, "exam_max": 60, "ca_count": 1}})
+    # Backfill ca_weights for schools that pre-date the per-column model.
+    # Convert their existing ca_max into a single-column weight array (admin can edit later).
+    async for sch in db.schools.find({"ca_weights": {"$exists": False}}, {"_id": 0, "id": 1, "ca_max": 1}):
+        ca_max_val = int(sch.get("ca_max") or 40)
+        await db.schools.update_one(
+            {"id": sch["id"]},
+            {"$set": {"ca_weights": [ca_max_val]}},
+        )
 
     # School admin
     if not await db.users.find_one({"email": "admin@demo.school"}):
