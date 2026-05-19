@@ -153,7 +153,12 @@ async def get_report(student_id: str, term: str = "1st Term", user: dict = Depen
     )
     total_subjects = len((class_subj_doc or {}).get("subjects") or []) or len(scores)
 
-    # Auto-remarks by grade for principal & teacher comments
+    # Auto-remarks by grade for principal & teacher comments.
+    # NOTE: the if/elif/.../else chain below is exhaustive — at least one branch
+    # always binds both `principal_comment` and `teacher_comment` before the
+    # return statement reads them. No pre-initialization is required (and
+    # adding one would mask future regressions if the final `else` is ever
+    # changed to another `elif`).
     if avg >= 75:
         principal_comment = f"{student['name']} has performed excellently this term. Keep aiming higher."
         teacher_comment = "An outstanding result — sets a strong example in class. Maintain this pace."

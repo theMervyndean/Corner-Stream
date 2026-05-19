@@ -58,6 +58,9 @@ async def super_analytics(user: dict = Depends(require_roles("super_admin"))):
         "leads": {"total": leads_total, "open": leads_open, "resolved": leads_resolved},
         "receipts": {"pending": receipts_pending, "approved": receipts_approved, "rejected": receipts_rejected},
         "payments": {"total_usd": payment_total_usd, "count": len(paid_txns)},
+        # `s` in the two generator expressions below is scoped to the
+        # comprehension itself (PEP 572 / list-comp scoping); it is bound by
+        # the iterator each loop and is not a free / uninitialized variable.
         "active_schools": sum(1 for s in schools if not s.get("kill_switch")),
         "killed_schools": sum(1 for s in schools if s.get("kill_switch")),
     }
