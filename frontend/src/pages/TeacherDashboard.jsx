@@ -113,12 +113,33 @@ export default function TeacherDashboard() {
   );
   const publishedExams = useMemo(() => exams.filter((e) => e.published).length, [exams]);
 
+  // Assessment structure from the school's profile config
+  const caWeights = useMemo(() => {
+    const w = school?.ca_weights;
+    if (Array.isArray(w) && w.length > 0) return w.map((n) => Number(n) || 0);
+    // Legacy fallback when school doc pre-dates per-column model
+    return [Number(school?.ca_max ?? 40) || 0];
+  }, [school]);
+  const examMaxCfg = useMemo(() => Number(school?.exam_max ?? 60) || 0, [school]);
+  const totalMax = useMemo(() => caWeights.reduce((a, b) => a + b, 0) + examMaxCfg, [caWeights, examMaxCfg]);
+
   const loadStudentScores = async (st) => {
     setSelected(st);
     try {
       const { data } = await api.get(`/scores`, { params: { student_id: st.id, term } });
       const sm = {};
-      (data.scores || []).forEach((s) => { sm[s.subject] = { ca: s.ca_score, exam: s.exam_score }; });
+      (data.scores || []).forEach((s) => {
+        // Hydrate per-column array; fall back to legacy aggregated ca_score in the first slot
+        let cas;
+        if (Array.isArray(s.ca_scores) && s.ca_scores.length === caWeights.length) {
+          cas = s.ca_scores.map((n) => Number(n) || 0);
+        } else {
+          cas = caWeights.map((_, i) => (i === 0 ? Number(s.ca_score) || 0 : 0));
+          // Clamp first slot into its weight cap so the UI doesn't render an invalid value
+          if (cas[0] > caWeights[0]) cas[0] = caWeights[0];
+        }
+        sm[s.subject] = { ca_scores: cas, exam: Number(s.exam_score) || 0 };
+      });
       const km = {};
       (data.skill_ratings || []).forEach((s) => { km[s.skill_name] = s.rating; });
       setScoreMap(sm);
@@ -134,11 +155,16 @@ export default function TeacherDashboard() {
     if (!selected) return;
     setSaving(true);
     try {
-      const items = subjectsForSelected.filter((s) => scoreMap[s]).map((s) => ({
-        student_id: selected.id, term, year, subject: s,
-        ca_score: Number(scoreMap[s].ca || 0),
-        exam_score: Number(scoreMap[s].exam || 0),
-      }));
+      const items = subjectsForSelected.filter((s) => scoreMap[s]).map((s) => {
+        const row = scoreMap[s];
+        const cas = Array.isArray(row.ca_scores) ? row.ca_scores.map((n) => Number(n) || 0) : caWeights.map(() => 0);
+        return {
+          student_id: selected.id, term, year, subject: s,
+          ca_scores: cas,
+          ca_score: cas.reduce((a, b) => a + b, 0),
+          exam_score: Number(row.exam || 0),
+        };
+      });
       if (items.length) await api.post("/scores/batch", { items });
       for (const skill of SKILLS) {
         if (skillMap[skill]) {
@@ -540,25 +566,64 @@ export default function TeacherDashboard() {
                           {subjectsForSelected.length === 0 && (
                             <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded p-3 mb-3">No subjects assigned to {selected.class_name}. Ask the school admin to add subjects in their dashboard.</div>
                           )}
-                          <div className="overflow-hidden rounded-lg border">
+                          <div className="text-xs text-slate-500 mb-2" data-testid="ca-structure-summary">
+                            Assessment structure: <strong className="cs-text-navy">{caWeights.map((w, i) => `CA${i + 1}/${w}`).join(" · ")} · Exam/{examMaxCfg}</strong> · Total <strong className="cs-text-navy">{totalMax}</strong>
+                          </div>
+                          <div className="overflow-x-auto rounded-lg border">
                             <Table>
                               <TableHeader>
                                 <TableRow className="cs-bg-navy hover:cs-bg-navy">
                                   <TableHead className="text-white">Subject</TableHead>
-                                  <TableHead className="text-white w-32">CA (40)</TableHead>
-                                  <TableHead className="text-white w-32">Exam (60)</TableHead>
-                                  <TableHead className="text-white w-32">Total</TableHead>
+                                  {caWeights.map((w, i) => (
+                                    <TableHead key={i} className="text-white w-24">CA{i + 1} ({w})</TableHead>
+                                  ))}
+                                  <TableHead className="text-white w-24">Exam ({examMaxCfg})</TableHead>
+                                  <TableHead className="text-white w-24">Total</TableHead>
                                 </TableRow>
                               </TableHeader>
                               <TableBody>
                                 {subjectsForSelected.map((s) => {
-                                  const v = scoreMap[s] || { ca: "", exam: "" };
-                                  const total = (Number(v.ca) || 0) + (Number(v.exam) || 0);
+                                  const v = scoreMap[s] || { ca_scores: caWeights.map(() => ""), exam: "" };
+                                  const cas = Array.isArray(v.ca_scores) ? v.ca_scores : caWeights.map(() => "");
+                                  const caTotal = cas.reduce((a, b) => a + (Number(b) || 0), 0);
+                                  const total = caTotal + (Number(v.exam) || 0);
+                                  const setCaAt = (idx, raw) => {
+                                    const next = [...cas];
+                                    next[idx] = raw;
+                                    setScoreMap({ ...scoreMap, [s]: { ...v, ca_scores: next } });
+                                  };
                                   return (
                                     <TableRow key={s}>
                                       <TableCell className="font-medium">{s}</TableCell>
-                                      <TableCell><Input type="number" max={40} value={v.ca} onChange={(e) => setScoreMap({ ...scoreMap, [s]: { ...v, ca: e.target.value } })} data-testid={`ca-${s}`} /></TableCell>
-                                      <TableCell><Input type="number" max={60} value={v.exam} onChange={(e) => setScoreMap({ ...scoreMap, [s]: { ...v, exam: e.target.value } })} data-testid={`exam-${s}`} /></TableCell>
+                                      {caWeights.map((w, i) => {
+                                        const val = cas[i];
+                                        const numeric = Number(val);
+                                        const over = val !== "" && val !== undefined && numeric > w;
+                                        return (
+                                          <TableCell key={i}>
+                                            <Input
+                                              type="number"
+                                              min={0}
+                                              max={w}
+                                              value={val ?? ""}
+                                              onChange={(e) => setCaAt(i, e.target.value)}
+                                              className={over ? "border-red-400 focus-visible:ring-red-300" : ""}
+                                              data-testid={`ca-${s}-${i}`}
+                                            />
+                                          </TableCell>
+                                        );
+                                      })}
+                                      <TableCell>
+                                        <Input
+                                          type="number"
+                                          min={0}
+                                          max={examMaxCfg}
+                                          value={v.exam ?? ""}
+                                          onChange={(e) => setScoreMap({ ...scoreMap, [s]: { ...v, ca_scores: cas, exam: e.target.value } })}
+                                          className={Number(v.exam) > examMaxCfg ? "border-red-400 focus-visible:ring-red-300" : ""}
+                                          data-testid={`exam-${s}`}
+                                        />
+                                      </TableCell>
                                       <TableCell><span className="font-semibold cs-text-navy">{total}</span></TableCell>
                                     </TableRow>
                                   );

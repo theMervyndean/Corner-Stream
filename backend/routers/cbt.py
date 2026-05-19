@@ -117,15 +117,37 @@ async def _student_record_for_user(db, user: dict) -> Optional[dict]:
 
 
 async def _upsert_score_from_cbt(db, student: dict, exam: dict, percent: float, teacher_id: Optional[str]):
-    """Convert CBT percent to /60 exam column and upsert into scores collection."""
-    exam_score = round((percent / 100) * 60)
+    """Convert CBT percent into the school's configured exam_max and upsert into scores.
+    Per-column CA breakdown is preserved (or initialised from legacy ca_score when missing)."""
+    school = await db.schools.find_one(
+        {"id": student["school_id"]}, {"_id": 0, "ca_weights": 1, "exam_max": 1, "ca_max": 1},
+    ) or {}
+    exam_max_cfg = int(school.get("exam_max") or 60)
+    ca_weights = school.get("ca_weights") or []
+
+    exam_score = round((percent / 100) * exam_max_cfg)
     # Find existing CA to preserve, else default 0
     existing = await db.scores.find_one({
         "student_id": student["id"], "term": exam["term"],
         "year": exam["year"], "subject": exam["subject"],
     })
-    ca = existing["ca_score"] if existing else 0
-    total = ca + exam_score
+    legacy_ca_total = (existing.get("ca_score") if existing else 0) or 0
+    # Preserve existing per-column breakdown if present; otherwise initialise an
+    # array sized to the school's current CA columns. We seed the first slot with
+    # any legacy aggregated ca_score so the total is preserved across the migration.
+    if existing and isinstance(existing.get("ca_scores"), list) and ca_weights and len(existing["ca_scores"]) == len(ca_weights):
+        ca_scores = list(existing["ca_scores"])
+        ca_total = sum(ca_scores)
+    elif ca_weights:
+        ca_scores = [0] * len(ca_weights)
+        # Clamp legacy total into the first column's weight cap
+        ca_scores[0] = min(int(legacy_ca_total), int(ca_weights[0]))
+        ca_total = sum(ca_scores)
+    else:
+        ca_scores = None
+        ca_total = int(legacy_ca_total)
+
+    total = ca_total + exam_score
     grade = _calc_grade(total)
     doc = {
         "student_id": student["id"],
@@ -133,7 +155,7 @@ async def _upsert_score_from_cbt(db, student: dict, exam: dict, percent: float, 
         "term": exam["term"],
         "year": exam["year"],
         "subject": exam["subject"],
-        "ca_score": ca,
+        "ca_score": ca_total,
         "exam_score": exam_score,
         "total": total,
         "grade": grade,
@@ -141,6 +163,8 @@ async def _upsert_score_from_cbt(db, student: dict, exam: dict, percent: float, 
         "source": "cbt",
         "updated_at": now_iso(),
     }
+    if ca_scores is not None:
+        doc["ca_scores"] = ca_scores
     if existing:
         await db.scores.update_one({"id": existing["id"]}, {"$set": doc})
     else:
