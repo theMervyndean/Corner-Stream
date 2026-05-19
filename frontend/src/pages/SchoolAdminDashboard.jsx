@@ -19,6 +19,7 @@ import {
   UserPlus, ClipboardList, History, Eye, RotateCcw, UserCog, UserMinus,
   Search, Filter, X as XIcon, BadgeCheck,
   Menu, ChevronRight, LogOut, Layers, BarChart3,
+  Copy, RefreshCw,
 } from "lucide-react";
 import { ChartCard, BarSimple, DonutChart, GrowthArea } from "@/components/Charts.jsx";
 import BulkUploadDialog from "@/components/BulkUploadDialog.jsx";
@@ -34,6 +35,26 @@ const PRICING = {
   unified_enterprise: { name: "Unified Enterprise", full_session: 200000 },
 };
 const DURS = [{ k: "1_term", l: "1 Term" }, { k: "2_terms", l: "2 Terms" }, { k: "full_session", l: "Full Session" }];
+
+// Strong password generator — uses crypto.getRandomValues, avoids ambiguous
+// characters (0/O, 1/l/I). 12 chars, mixed-case + digits + safe symbols.
+function generatePassword(len = 12) {
+  const charset = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%&*-_+?";
+  const buf = new Uint32Array(len);
+  (window.crypto || window.msCrypto).getRandomValues(buf);
+  let out = "";
+  for (let i = 0; i < len; i++) out += charset[buf[i] % charset.length];
+  return out;
+}
+
+async function copyToClipboard(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 export default function SchoolAdminDashboard() {
   const { user, logout } = useAuth();
@@ -76,7 +97,7 @@ export default function SchoolAdminDashboard() {
   // Users (teachers / parents)
   const [usersList, setUsersList] = useState([]);
   const [userDlg, setUserDlg] = useState(false);
-  const [newUser, setNewUser] = useState({ name: "", email: "", password: "", role: "teacher", assigned_class: "" });
+  const [newUser, setNewUser] = useState({ name: "", email: "", password: generatePassword(), role: "teacher", assigned_class: "" });
 
   // Passport upload
   const [passportDlg, setPassportDlg] = useState(null);
@@ -243,7 +264,7 @@ export default function SchoolAdminDashboard() {
       await api.post("/users", newUser);
       toast.success(`${newUser.role === "teacher" ? "Teacher" : "Parent"} created — share credentials with them`);
       setUserDlg(false);
-      setNewUser({ name: "", email: "", password: "", role: newUser.role, assigned_class: "" });
+      setNewUser({ name: "", email: "", password: generatePassword(), role: newUser.role, assigned_class: "" });
       refresh();
     } catch (e) { toast.error(formatApiError(e.response?.data?.detail) || e.message); }
   };
@@ -389,7 +410,7 @@ export default function SchoolAdminDashboard() {
   const openLoginDlg = (st) => {
     setLoginDlg(st);
     const seed = st.name.toLowerCase().split(" ")[0].replace(/[^a-z]/g, "");
-    setLoginForm({ email: `${seed}@${school.name.toLowerCase().replace(/[^a-z]/g, "")}.school`, password: "Student@123" });
+    setLoginForm({ email: `${seed}@${school.name.toLowerCase().replace(/[^a-z]/g, "")}.school`, password: generatePassword() });
   };
   const submitLogin = async () => {
     try {
@@ -617,8 +638,8 @@ export default function SchoolAdminDashboard() {
                 const steps = [
                   { done: !!(school.address && school.phone && school.motto), label: "Build your school profile (address, motto, logo, contact)", action: () => setTab("profile") },
                   { done: classSubjects.length > 0, label: "Set subjects for each class", action: () => setTab("subjects") },
-                  { done: usersList.some((u) => u.role === "teacher"), label: "Add at least one teacher", action: () => { setNewUser({ ...newUser, role: "teacher" }); setUserDlg(true); } },
-                  { done: usersList.some((u) => u.role === "parent"), label: "Add at least one parent", action: () => { setNewUser({ ...newUser, role: "parent" }); setUserDlg(true); } },
+                  { done: usersList.some((u) => u.role === "teacher"), label: "Add at least one teacher", action: () => { setNewUser({ name: "", email: "", password: generatePassword(), role: "teacher", assigned_class: "" }); setUserDlg(true); } },
+                  { done: usersList.some((u) => u.role === "parent"), label: "Add at least one parent", action: () => { setNewUser({ name: "", email: "", password: generatePassword(), role: "parent", assigned_class: "" }); setUserDlg(true); } },
                   { done: students.length > 0, label: "Add students (manually or upload Excel)", action: () => setTab("students") },
                   { done: usersList.some((u) => u.role === "student"), label: "Provision at least one student login (from the Students tab)", action: () => setTab("students") },
                   { done: !!school.subscription_tier, label: "Choose a subscription plan", action: () => setTab("subscription") },
@@ -921,7 +942,7 @@ export default function SchoolAdminDashboard() {
                 <Button variant="outline" size="sm" onClick={() => setBulkRole("student")} className="btn-anim" data-testid="bulk-students-btn">
                   <FileSpreadsheet size={14} className="mr-1" /> Bulk students
                 </Button>
-                <Button onClick={() => { setNewUser({ name: "", email: "", password: "", role: "teacher", assigned_class: "" }); setUserDlg(true); }} className="cs-bg-green text-white hover:opacity-90 rounded-full btn-anim" data-testid="add-user-btn"><Plus size={14} className="mr-1" /> Add user</Button>
+                <Button onClick={() => { setNewUser({ name: "", email: "", password: generatePassword(), role: "teacher", assigned_class: "" }); setUserDlg(true); }} className="cs-bg-green text-white hover:opacity-90 rounded-full btn-anim" data-testid="add-user-btn"><Plus size={14} className="mr-1" /> Add user</Button>
               </div>
             </div>
 
@@ -1312,7 +1333,15 @@ export default function SchoolAdminDashboard() {
           <DialogHeader><DialogTitle>Create login for {loginDlg?.name}</DialogTitle></DialogHeader>
           <div className="space-y-3">
             <div><Label>Email</Label><Input type="email" value={loginForm.email} onChange={(e) => setLoginForm({ ...loginForm, email: e.target.value })} data-testid="login-create-email" /></div>
-            <div><Label>Password</Label><Input value={loginForm.password} onChange={(e) => setLoginForm({ ...loginForm, password: e.target.value })} data-testid="login-create-pw" /></div>
+            <div>
+              <Label>Password</Label>
+              <div className="flex items-center gap-2">
+                <Input value={loginForm.password} onChange={(e) => setLoginForm({ ...loginForm, password: e.target.value })} data-testid="login-create-pw" />
+                <Button type="button" size="sm" variant="outline" title="Regenerate" onClick={() => setLoginForm({ ...loginForm, password: generatePassword() })} data-testid="login-pw-regenerate"><RefreshCw size={14} /></Button>
+                <Button type="button" size="sm" variant="outline" title="Copy to clipboard" onClick={async () => { const ok = await copyToClipboard(loginForm.password); toast[ok ? "success" : "error"](ok ? "Password copied" : "Copy failed — select and copy manually"); }} data-testid="login-pw-copy"><Copy size={14} /></Button>
+              </div>
+              <p className="text-xs text-slate-500 mt-1">Copy this password before saving — you can reset it later but it won't be shown again here.</p>
+            </div>
             <p className="text-xs text-slate-500">Share these credentials with the student. They can log in at the main page.</p>
           </div>
           <DialogFooter><Button onClick={submitLogin} className="cs-bg-green text-white hover:opacity-90" data-testid="login-create-submit">Create login</Button></DialogFooter>
@@ -1349,7 +1378,15 @@ export default function SchoolAdminDashboard() {
             </div>
             <div><Label>Full name</Label><Input value={newUser.name} onChange={(e) => setNewUser({ ...newUser, name: e.target.value })} data-testid="nu-name" /></div>
             <div><Label>Email</Label><Input type="email" value={newUser.email} onChange={(e) => setNewUser({ ...newUser, email: e.target.value })} data-testid="nu-email" /></div>
-            <div><Label>Password</Label><Input value={newUser.password} onChange={(e) => setNewUser({ ...newUser, password: e.target.value })} data-testid="nu-password" /></div>
+            <div>
+              <Label>Password</Label>
+              <div className="flex items-center gap-2">
+                <Input value={newUser.password} onChange={(e) => setNewUser({ ...newUser, password: e.target.value })} data-testid="nu-password" />
+                <Button type="button" size="sm" variant="outline" title="Regenerate" onClick={() => setNewUser({ ...newUser, password: generatePassword() })} data-testid="nu-pw-regenerate"><RefreshCw size={14} /></Button>
+                <Button type="button" size="sm" variant="outline" title="Copy to clipboard" onClick={async () => { const ok = await copyToClipboard(newUser.password); toast[ok ? "success" : "error"](ok ? "Password copied" : "Copy failed — select and copy manually"); }} data-testid="nu-pw-copy"><Copy size={14} /></Button>
+              </div>
+              <p className="text-xs text-slate-500 mt-1">Copy this password before saving — you can reset it later but it won't be shown again here.</p>
+            </div>
             {newUser.role === "teacher" && (
               <div>
                 <Label>Assigned class (optional)</Label>
