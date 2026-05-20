@@ -1,5 +1,6 @@
 """Subjects router — manage subjects per class."""
 from io import BytesIO
+from difflib import get_close_matches
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from pydantic import BaseModel
 from typing import List, Optional
@@ -8,6 +9,11 @@ from db import get_db, now_iso
 from auth_utils import get_current_user, require_roles
 
 router = APIRouter(prefix="/subjects", tags=["subjects"])
+
+
+def _normalize_class_key(s: str) -> str:
+    """Whitespace-normalize a class name so 'JSS  1' compares equal to 'JSS 1'."""
+    return " ".join((s or "").lower().split())
 
 
 class SubjectsIn(BaseModel):
@@ -108,30 +114,46 @@ async def bulk_upload_subjects(file: UploadFile = File(...), user: dict = Depend
 
     # Resolve which classes are valid for this school
     school = await db.schools.find_one({"id": user["school_id"]}, {"_id": 0, "classes": 1}) or {}
-    valid_classes = set(school.get("classes") or [])
+    valid_classes = list(school.get("classes") or [])
+    # Build a normalized lookup so 'JSS  1' (double space) resolves to 'JSS 1'
+    norm_lookup = {_normalize_class_key(c): c for c in valid_classes}
 
     saved: list[str] = []
     skipped: list[dict] = []
     for cls, subs in grouped.items():
-        if valid_classes and cls not in valid_classes:
-            skipped.append({"class_name": cls, "reason": "Class not found on school roster", "subjects": subs})
+        # Try exact, then whitespace-normalized match before declaring it invalid.
+        if cls in valid_classes:
+            resolved = cls
+        elif _normalize_class_key(cls) in norm_lookup:
+            resolved = norm_lookup[_normalize_class_key(cls)]
+        else:
+            resolved = None
+        if resolved is None:
+            # Suggest the closest existing class name if one is similar enough.
+            suggestions = get_close_matches(cls, valid_classes, n=1, cutoff=0.6)
+            skipped.append({
+                "class_name": cls,
+                "reason": "Class not found on school roster",
+                "suggestion": suggestions[0] if suggestions else None,
+                "subjects": subs,
+            })
             continue
         doc = {
             "school_id": user["school_id"],
-            "class_name": cls,
+            "class_name": resolved,
             "subjects": subs,
             "updated_at": now_iso(),
         }
-        existing = await db.class_subjects.find_one({"school_id": user["school_id"], "class_name": cls})
+        existing = await db.class_subjects.find_one({"school_id": user["school_id"], "class_name": resolved})
         if existing:
             await db.class_subjects.update_one(
-                {"school_id": user["school_id"], "class_name": cls},
+                {"school_id": user["school_id"], "class_name": resolved},
                 {"$set": doc},
             )
         else:
             doc["created_at"] = now_iso()
             await db.class_subjects.insert_one(doc)
-        saved.append(cls)
+        saved.append(resolved)
     return {
         "saved_classes": saved,
         "saved_count": len(saved),

@@ -439,7 +439,10 @@ export default function SchoolAdminDashboard() {
         toast.error("No subjects imported. Check the file headers and that classes exist.");
       }
       if (data.skipped?.length) {
-        data.skipped.slice(0, 3).forEach((s) => toast.warning(`Skipped ${s.class_name} — ${s.reason}`));
+        data.skipped.slice(0, 3).forEach((s) => {
+          const hint = s.suggestion ? ` — did you mean "${s.suggestion}"?` : "";
+          toast.warning(`Skipped ${s.class_name} — ${s.reason}${hint}`);
+        });
       }
       setSubjDlg(false);
       refresh();
