@@ -193,3 +193,28 @@ async def cbt_questions_template(user: dict = Depends(get_current_user)):
     ]
     buf = _build_workbook("CBT Questions", headers, sample_rows, notes)
     return _xlsx_response(buf, "corner-streams-cbt-questions-template.xlsx")
+
+
+@router.get("/subjects.xlsx")
+async def subjects_template(user: dict = Depends(get_current_user)):
+    headers = [
+        ("class_name", "Required — must match an existing class name exactly (case-sensitive). Example: 'JSS 1', 'Primary 4'"),
+        ("subject_name", "Required — the subject name. Repeat the class_name on each row for multi-subject classes."),
+    ]
+    sample_rows = [
+        ["JSS 1", "Mathematics"],
+        ["JSS 1", "English Language"],
+        ["JSS 1", "Basic Science"],
+        ["Primary 4", "Mathematics"],
+        ["Primary 4", "English Language"],
+        ["Primary 4", "Verbal Reasoning"],
+    ]
+    notes = [
+        "Long format: one row per (class, subject) pair. Repeat the class_name for every subject in that class.",
+        "On upload, the system REPLACES the subject list for each class found in the file. Subjects for classes NOT in the file are left untouched.",
+        "Class names must already exist on your school (set them under the Classes tab). Unknown classes are skipped and reported back.",
+        "Subject names are de-duplicated case-insensitively within a class — 'maths' and 'Maths' count as the same row.",
+        "Whitespace is trimmed; completely blank rows are ignored.",
+    ]
+    buf = _build_workbook("Subjects", headers, sample_rows, notes)
+    return _xlsx_response(buf, "corner-streams-subjects-template.xlsx")

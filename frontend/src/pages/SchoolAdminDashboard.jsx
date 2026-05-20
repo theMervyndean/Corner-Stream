@@ -161,6 +161,7 @@ export default function SchoolAdminDashboard() {
       students: "students-template.xlsx",
       teachers: "teachers-template.xlsx",
       "cbt-questions": "cbt-questions-template.xlsx",
+      subjects: "subjects-template.xlsx",
     };
     try {
       const res = await api.get(`/templates/${kind}.xlsx`, { responseType: "blob" });
@@ -420,6 +421,33 @@ export default function SchoolAdminDashboard() {
     if (!window.confirm(`Remove subjects for ${className}?`)) return;
     try { await api.delete(`/subjects/${encodeURIComponent(className)}`); refresh(); }
     catch (e) { toast.error(formatApiError(e.response?.data?.detail) || e.message); }
+  };
+  const [subjUploading, setSubjUploading] = useState(false);
+  const bulkUploadSubjects = async (file) => {
+    if (!file) return;
+    setSubjUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const { data } = await api.post("/subjects/bulk-upload", fd, { headers: { "Content-Type": "multipart/form-data" } });
+      const saved = data.saved_count || 0;
+      const skipped = data.skipped_count || 0;
+      const total = data.total_subject_rows || 0;
+      if (saved > 0) {
+        toast.success(`Imported ${total} subject row${total === 1 ? "" : "s"} across ${saved} class${saved === 1 ? "" : "es"}${skipped ? ` — ${skipped} class${skipped === 1 ? "" : "es"} skipped` : ""}`);
+      } else {
+        toast.error("No subjects imported. Check the file headers and that classes exist.");
+      }
+      if (data.skipped?.length) {
+        data.skipped.slice(0, 3).forEach((s) => toast.warning(`Skipped ${s.class_name} — ${s.reason}`));
+      }
+      setSubjDlg(false);
+      refresh();
+    } catch (e) {
+      toast.error(formatApiError(e.response?.data?.detail) || e.message);
+    } finally {
+      setSubjUploading(false);
+    }
   };
 
   // Login provisioning
@@ -1422,6 +1450,39 @@ export default function SchoolAdminDashboard() {
       <Dialog open={subjDlg} onOpenChange={setSubjDlg}>
         <DialogContent>
           <DialogHeader><DialogTitle>{subjForm.class_name && classSubjects.find((c) => c.class_name === subjForm.class_name) ? "Edit class subjects" : "Add class subjects"}</DialogTitle></DialogHeader>
+          {/* Bulk path — download a template, fill it, upload back */}
+          <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50/60 p-4 mb-1" data-testid="subj-bulk-block">
+            <div className="flex items-start gap-3">
+              <div className="w-9 h-9 rounded-md cs-bg-blue text-white flex items-center justify-center shrink-0"><FileSpreadsheet size={16} /></div>
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-semibold cs-text-navy">Bulk import via Excel</div>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  Long format: one row per <code className="text-[10px] bg-white px-1 rounded border">class_name</code> + <code className="text-[10px] bg-white px-1 rounded border">subject_name</code> pair. Replaces lists for every class found in the file.
+                </p>
+              </div>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Button type="button" variant="outline" size="sm" onClick={() => downloadTemplate("subjects")} data-testid="subj-template-download">
+                <FileSpreadsheet size={14} className="mr-1.5" /> Download template
+              </Button>
+              <label className="inline-flex items-center gap-1.5 px-3 h-9 rounded-md cs-bg-green text-white text-xs font-medium hover:opacity-90 cursor-pointer">
+                <Upload size={14} />
+                {subjUploading ? "Uploading…" : "Upload filled file"}
+                <input
+                  type="file"
+                  accept=".xlsx"
+                  className="hidden"
+                  disabled={subjUploading}
+                  onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; bulkUploadSubjects(f); }}
+                  data-testid="subj-bulk-upload-input"
+                />
+              </label>
+            </div>
+          </div>
+          <div className="relative my-3" role="separator">
+            <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-slate-200" /></div>
+            <div className="relative flex justify-center"><span className="bg-white px-2 text-[10px] uppercase tracking-wider text-slate-400">Or enter manually</span></div>
+          </div>
           <div className="space-y-3">
             <div>
               <Label>Class name</Label>
