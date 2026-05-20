@@ -36,6 +36,18 @@ const PRICING = {
 };
 const DURS = [{ k: "1_term", l: "1 Term" }, { k: "2_terms", l: "2 Terms" }, { k: "full_session", l: "Full Session" }];
 
+// Derive a class's school-type level from its name. Returns 'primary',
+// 'secondary' or 'unknown' so the Subjects tab can filter by School Type
+// for mixed-K12 schools.
+function getClassLevel(className) {
+  const n = (className || "").trim().toLowerCase();
+  if (!n) return "unknown";
+  if (/^(creche|crèche|nursery|kg|kindergarten|reception|pre[- ]?k|pre[- ]?nursery|playgroup)\b/.test(n)) return "primary";
+  if (/^(primary|pry|grade|basic [1-6]\b)/.test(n)) return "primary";
+  if (/^(jss|js |js[1-3]|j\.s\.s|junior secondary|sss|ss |ss[1-3]|s\.s\.s|senior secondary|secondary)\b/.test(n)) return "secondary";
+  return "unknown";
+}
+
 // Strong password generator — uses crypto.getRandomValues, avoids ambiguous
 // characters (0/O, 1/l/I). 12 chars, mixed-case + digits + safe symbols.
 function generatePassword(len = 12) {
@@ -82,6 +94,8 @@ export default function SchoolAdminDashboard() {
   const [classSubjects, setClassSubjects] = useState([]);
   const [subjDlg, setSubjDlg] = useState(false);
   const [subjForm, setSubjForm] = useState({ class_name: "", subjectsText: "" });
+  // Subjects tab: filter cards by school-type level (only meaningful for mixed schools)
+  const [subjectsLevelFilter, setSubjectsLevelFilter] = useState("all"); // "all" | "primary" | "secondary"
 
   // Login provisioning
   const [loginDlg, setLoginDlg] = useState(null); // student object
@@ -1145,30 +1159,91 @@ export default function SchoolAdminDashboard() {
           </TabsContent>
 
           <TabsContent value="subjects" className="mt-6">
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
               <h3 className="font-display font-semibold cs-text-navy text-lg">Subjects per class</h3>
               <Button onClick={openNewSubjects} className="cs-bg-green text-white hover:opacity-90 rounded-full" data-testid="add-subjects-btn"><Plus size={14} className="mr-1" /> Add class subjects</Button>
             </div>
-            <div className="grid sm:grid-cols-2 gap-4">
-              {classSubjects.map((cs) => (
-                <div key={cs.class_name} className="cs-card p-5" data-testid={`subjects-${cs.class_name}`}>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <div className="w-9 h-9 rounded-md cs-bg-blue text-white flex items-center justify-center"><BookOpen size={16} /></div>
-                      <div className="font-display font-bold cs-text-navy">{cs.class_name}</div>
-                    </div>
-                    <div className="flex gap-2">
-                      <Button size="sm" variant="outline" onClick={() => editSubjects(cs)} data-testid={`edit-subjects-${cs.class_name}`}>Edit</Button>
-                      <Button size="sm" variant="destructive" onClick={() => deleteSubjects(cs.class_name)} data-testid={`del-subjects-${cs.class_name}`}><Trash2 size={12} /></Button>
-                    </div>
+            {(() => {
+              const isMixed = school.school_type === "mixed";
+              // For non-mixed schools, pre-pin the filter to the school's own level so the chip row is informational only.
+              const effectiveFilter = isMixed ? subjectsLevelFilter : (school.school_type === "primary" ? "primary" : "secondary");
+              const filtered = classSubjects.filter((cs) => {
+                if (effectiveFilter === "all") return true;
+                return getClassLevel(cs.class_name) === effectiveFilter;
+              });
+              const chip = (k, l) => (
+                <button
+                  key={k}
+                  type="button"
+                  onClick={() => isMixed && setSubjectsLevelFilter(k)}
+                  disabled={!isMixed && k !== effectiveFilter}
+                  className={`px-3 py-1.5 text-xs font-semibold rounded-full border transition ${effectiveFilter === k ? "cs-bg-navy text-white border-transparent" : "bg-white text-slate-600 border-slate-200 hover:border-slate-400"} ${!isMixed && k !== effectiveFilter ? "opacity-40 cursor-not-allowed" : ""}`}
+                  data-testid={`subjects-filter-${k}`}
+                >
+                  {l}
+                </button>
+              );
+              return (
+                <>
+                  <div className="flex flex-wrap items-center gap-2 mb-4" data-testid="subjects-filter-row">
+                    <span className="text-xs text-slate-500">Filter by School Type:</span>
+                    {chip("all", "All")}
+                    {chip("primary", "Primary")}
+                    {chip("secondary", "Secondary")}
+                    {!isMixed && (
+                      <span className="text-[11px] text-slate-400 ml-1">
+                        (Single-type school — locked to <strong className="cs-text-navy capitalize">{school.school_type || "secondary"}</strong>)
+                      </span>
+                    )}
+                    <span className="ml-auto text-xs text-slate-500" data-testid="subjects-filter-count">
+                      Showing <strong className="cs-text-navy">{filtered.length}</strong> of {classSubjects.length}
+                    </span>
                   </div>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {cs.subjects.map((sub) => <Badge key={sub} variant="outline" className="text-xs">{sub}</Badge>)}
+                  <div className="grid sm:grid-cols-2 gap-4">
+                    {filtered.map((cs) => {
+                      const lvl = getClassLevel(cs.class_name);
+                      const lvlChip = lvl === "primary"
+                        ? <Badge className="cs-bg-blue text-white text-[10px] uppercase tracking-wide">Primary</Badge>
+                        : lvl === "secondary"
+                          ? <Badge className="cs-bg-navy text-white text-[10px] uppercase tracking-wide">Secondary</Badge>
+                          : <Badge className="bg-slate-300 text-white text-[10px] uppercase tracking-wide">Unsorted</Badge>;
+                      return (
+                        <div key={cs.class_name} className="cs-card p-5" data-testid={`subjects-${cs.class_name}`}>
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <div className="w-9 h-9 rounded-md cs-bg-blue text-white flex items-center justify-center shrink-0"><BookOpen size={16} /></div>
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <div className="font-display font-bold cs-text-navy truncate">{cs.class_name}</div>
+                                  {lvlChip}
+                                </div>
+                                <div className="text-[11px] text-slate-500">{cs.subjects.length} subject{cs.subjects.length !== 1 ? "s" : ""}</div>
+                              </div>
+                            </div>
+                            <div className="flex gap-2 shrink-0">
+                              <Button size="sm" variant="outline" onClick={() => editSubjects(cs)} data-testid={`edit-subjects-${cs.class_name}`}>Edit</Button>
+                              <Button size="sm" variant="destructive" onClick={() => deleteSubjects(cs.class_name)} data-testid={`del-subjects-${cs.class_name}`}><Trash2 size={12} /></Button>
+                            </div>
+                          </div>
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            {cs.subjects.map((sub) => <Badge key={sub} variant="outline" className="text-xs">{sub}</Badge>)}
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {!filtered.length && (
+                      <div className="cs-card p-8 col-span-full text-center text-slate-500" data-testid="subjects-empty-state">
+                        {classSubjects.length === 0
+                          ? <>No subjects assigned yet. Click <strong>Add class subjects</strong> to get started.</>
+                          : effectiveFilter === "all"
+                            ? <>No matching subjects.</>
+                            : <>No <strong className="capitalize">{effectiveFilter}</strong> classes have subjects yet.</>}
+                      </div>
+                    )}
                   </div>
-                </div>
-              ))}
-              {!classSubjects.length && <div className="cs-card p-8 col-span-full text-center text-slate-500">No subjects assigned yet. Click <strong>Add class subjects</strong> to get started.</div>}
-            </div>
+                </>
+              );
+            })()}
           </TabsContent>
 
           <TabsContent value="subscription" className="mt-6">
