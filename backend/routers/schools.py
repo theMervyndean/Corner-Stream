@@ -1,0 +1,195 @@
+"""Schools router — school info, subscription, class roster management."""
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
+from typing import Optional, List, Literal
+from db import get_db, now_iso, default_classes, SCHOOL_TYPES
+from auth_utils import get_current_user, require_roles
+from audit_log import log_event, EVENT_CLASS_ADDED, EVENT_CLASS_REMOVED
+
+router = APIRouter(prefix="/schools", tags=["schools"])
+
+
+class SchoolUpdate(BaseModel):
+    name: Optional[str] = None
+    school_type: Optional[Literal["primary", "secondary", "mixed"]] = None
+    classes: Optional[List[str]] = None
+    principal_name: Optional[str] = None
+    address: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    motto: Optional[str] = None
+    logo_url: Optional[str] = None
+    founded_year: Optional[str] = None
+    website: Optional[str] = None
+    brand_color: Optional[str] = Field(default=None, pattern=r"^#[0-9a-fA-F]{6}$")
+    ca_max: Optional[int] = Field(default=None, ge=0, le=100)
+    exam_max: Optional[int] = Field(default=None, ge=0, le=100)
+    ca_count: Optional[int] = Field(default=None, ge=1, le=6)
+    # New per-column CA weight model. Length 2..5, each ≥ 1.
+    # When provided alongside exam_max, sum(ca_weights) + exam_max must equal 100.
+    ca_weights: Optional[List[int]] = None
+
+
+@router.get("/me")
+async def my_school(user: dict = Depends(get_current_user)):
+    """Return ONLY the school of the authenticated user. Hard-isolated by school_id."""
+    if not user.get("school_id"):
+        raise HTTPException(status_code=404, detail="No school associated")
+    db = get_db()
+    school = await db.schools.find_one({"id": user["school_id"]}, {"_id": 0})
+    if not school:
+        raise HTTPException(status_code=404, detail="School not found")
+    # Backfill classes/school_type in response if missing
+    if not school.get("classes"):
+        school["classes"] = default_classes(school.get("school_type") or "secondary")
+    if not school.get("school_type"):
+        school["school_type"] = "secondary"
+    return {"school": school}
+
+
+@router.put("/me")
+async def update_my_school(payload: SchoolUpdate, user: dict = Depends(require_roles("school_admin"))):
+    db = get_db()
+    update = {k: v for k, v in payload.model_dump().items() if v is not None}
+    # Sanitize classes: trim, dedupe (preserve order), drop empty
+    if "classes" in update:
+        seen = set()
+        cleaned = []
+        for c in update["classes"]:
+            n = (c or "").strip()
+            if n and n not in seen:
+                seen.add(n)
+                cleaned.append(n)
+        if not cleaned:
+            raise HTTPException(status_code=400, detail="At least one class required")
+        update["classes"] = cleaned
+    if "school_type" in update and update["school_type"] not in SCHOOL_TYPES:
+        raise HTTPException(status_code=400, detail="Invalid school_type")
+    # ── Assessment structure (CA columns + exam) ──
+    # Per-column CA weight model. Validate first; then derive ca_max / ca_count
+    # so legacy clients reading those scalar fields stay consistent.
+    if update.get("ca_weights") is not None:
+        weights = update["ca_weights"]
+        if not isinstance(weights, list) or not (2 <= len(weights) <= 5):
+            raise HTTPException(status_code=400, detail="CA columns must be between 2 and 5")
+        try:
+            weights = [int(w) for w in weights]
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="CA weights must be integers")
+        if any(w < 1 for w in weights):
+            raise HTTPException(status_code=400, detail="Each CA weight must be at least 1")
+        # Resolve exam_max: prefer the incoming value, else fall back to existing school doc
+        if update.get("exam_max") is not None:
+            exam_val = int(update["exam_max"])
+        else:
+            current = await db.schools.find_one({"id": user["school_id"]}, {"_id": 0, "exam_max": 1})
+            exam_val = int((current or {}).get("exam_max") or 0)
+        if exam_val < 1:
+            raise HTTPException(status_code=400, detail="Exam max must be at least 1")
+        if sum(weights) + exam_val != 100:
+            raise HTTPException(status_code=400, detail=f"CA weights ({sum(weights)}) + Exam ({exam_val}) must total 100")
+        update["ca_weights"] = weights
+        update["ca_max"] = sum(weights)
+        update["ca_count"] = len(weights)
+        update["exam_max"] = exam_val
+    # Legacy fallback: when only ca_max/exam_max are provided (no ca_weights), keep the old rule.
+    elif update.get("ca_max") is not None and update.get("exam_max") is not None:
+        if int(update["ca_max"]) + int(update["exam_max"]) != 100:
+            raise HTTPException(status_code=400, detail="CA + Exam max scores must add to 100")
+    update["updated_at"] = now_iso()
+    await db.schools.update_one({"id": user["school_id"]}, {"$set": update})
+    school = await db.schools.find_one({"id": user["school_id"]}, {"_id": 0})
+    return {"school": school}
+
+
+# ---- Class roster helpers ----
+class ClassAddIn(BaseModel):
+    class_name: str = Field(min_length=1, max_length=80)
+
+
+@router.post("/me/classes")
+async def add_class(payload: ClassAddIn, user: dict = Depends(require_roles("school_admin"))):
+    """Append a new class name to the school's roster (e.g., 'JSS 1 Crystal')."""
+    db = get_db()
+    school = await db.schools.find_one({"id": user["school_id"]}, {"_id": 0})
+    if not school:
+        raise HTTPException(status_code=404, detail="School not found")
+    classes = list(school.get("classes") or default_classes(school.get("school_type") or "secondary"))
+    name = payload.class_name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Class name cannot be empty")
+    if name in classes:
+        raise HTTPException(status_code=400, detail="Class already exists")
+    classes.append(name)
+    await db.schools.update_one({"id": user["school_id"]}, {"$set": {"classes": classes, "updated_at": now_iso()}})
+    await log_event(
+        school_id=user["school_id"], event_type=EVENT_CLASS_ADDED,
+        actor_id=user.get("id"), actor_name=user.get("name"), actor_role=user.get("role"),
+        summary=f"Class added: {name}", details={"class_name": name},
+    )
+    return {"classes": classes}
+
+
+@router.delete("/me/classes/{class_name}")
+async def remove_class(class_name: str, user: dict = Depends(require_roles("school_admin"))):
+    """Remove a class from the roster. Cannot remove if students are assigned to it."""
+    db = get_db()
+    school = await db.schools.find_one({"id": user["school_id"]}, {"_id": 0})
+    if not school:
+        raise HTTPException(status_code=404, detail="School not found")
+    classes = list(school.get("classes") or [])
+    if class_name not in classes:
+        raise HTTPException(status_code=404, detail="Class not found in roster")
+    # Block removal if students are assigned
+    in_use = await db.students.count_documents({"school_id": user["school_id"], "class_name": class_name})
+    if in_use > 0:
+        raise HTTPException(status_code=400, detail=f"Cannot remove — {in_use} student(s) are assigned to {class_name}")
+    classes.remove(class_name)
+    if not classes:
+        raise HTTPException(status_code=400, detail="Cannot remove last class")
+    await db.schools.update_one({"id": user["school_id"]}, {"$set": {"classes": classes, "updated_at": now_iso()}})
+    await log_event(
+        school_id=user["school_id"], event_type=EVENT_CLASS_REMOVED,
+        actor_id=user.get("id"), actor_name=user.get("name"), actor_role=user.get("role"),
+        summary=f"Class removed: {class_name}", details={"class_name": class_name},
+    )
+    return {"classes": classes}
+
+
+
+class ClassRenameIn(BaseModel):
+    new_name: str = Field(min_length=1, max_length=80)
+
+
+@router.put("/me/classes/{old_name}")
+async def rename_class(old_name: str, payload: ClassRenameIn, user: dict = Depends(require_roles("school_admin"))):
+    """Rename a class in the roster. Also renames the class on every student, scores, skills,
+    class_subjects and cbt_exams record that references it."""
+    db = get_db()
+    school = await db.schools.find_one({"id": user["school_id"]}, {"_id": 0})
+    if not school:
+        raise HTTPException(status_code=404, detail="School not found")
+    classes = list(school.get("classes") or [])
+    if old_name not in classes:
+        raise HTTPException(status_code=404, detail="Class not found in roster")
+    new_name = payload.new_name.strip()
+    if not new_name:
+        raise HTTPException(status_code=400, detail="New name required")
+    if new_name == old_name:
+        return {"classes": classes}
+    if new_name in classes:
+        raise HTTPException(status_code=400, detail=f'"{new_name}" already exists')
+    classes = [new_name if c == old_name else c for c in classes]
+    await db.schools.update_one({"id": user["school_id"]}, {"$set": {"classes": classes, "updated_at": now_iso()}})
+    # Cascade rename across collections scoped to this school
+    for col in ("students", "class_subjects", "cbt_exams", "scores", "skill_ratings"):
+        await db[col].update_many(
+            {"school_id": user["school_id"], "class_name": old_name},
+            {"$set": {"class_name": new_name, "updated_at": now_iso()}},
+        )
+    await log_event(
+        school_id=user["school_id"], event_type=EVENT_CLASS_ADDED,
+        actor_id=user.get("id"), actor_name=user.get("name"), actor_role=user.get("role"),
+        summary=f"Class renamed: {old_name} → {new_name}", details={"old_name": old_name, "new_name": new_name},
+    )
+    return {"classes": classes, "old_name": old_name, "new_name": new_name}

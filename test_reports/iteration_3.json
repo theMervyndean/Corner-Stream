@@ -1,0 +1,36 @@
+{
+  "summary": "Focused P0 testing for Corner Streams: WhatsApp-verified payment gate (P0#1), report-card upgrades (P0#10) and parent children list bug (P0#11). 14/14 backend tests pass (new /app/backend/tests/p0_test.py); frontend Playwright e2e validated register->/pending redirect, pending page content (UBA / 2936722942 / Mervyndean / tier / duration / WhatsApp deep link / receipt + 6-digit code inputs), super admin verification queue with Generate-code dialog showing 6-digit code + WhatsApp deep-link, and ReportCard with brand_color #002147 borders, logo box, 'Subjects scored: 6 of 6', Remark column ('Excellent'), and principal+teacher comment boxes. All seeded role logins still work and /api/superadmin/stats includes pending_schools.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/p0_test.py",
+    "/app/test_reports/pytest/p0_results.xml"
+  ],
+  "action_items": [
+    "(Optional) Parent dashboard children list loads slightly after networkidle — consider showing a loading skeleton instead of the 'No children linked' empty state during the brief fetch window so users don't see a misleading message on slow networks.",
+    "(Optional) Add data-testid attributes to ReportCard subject rows + principal/teacher comment containers, parent-dashboard child-card 'Term result' buttons, and super-admin 'Generate code' / 'Approve' / 'Reject' action buttons for more robust selectors in future Playwright tests."
+  ],
+  "critical_code_review_comments": [
+    "auth.register: response intentionally omits token/user (payment gate). Good.",
+    "superadmin.verify_school approve path: subscription tier/duration/expires_at pulled from latest pending bank-receipt and kill_switch reset — verified end-to-end. No _id leakage.",
+    "payments.bank-receipt-public: flips school to 'pending_code' only (not 'active'); approval still requires super admin verify. Verified.",
+    "reports.get_report: principal_comment/teacher_comment grade brackets are exclusive (>=75 produces 'excellently'/'outstanding') — confirmed for Adaeze 86.5% avg. Bracket boundaries (e.g. exactly 75 or exactly 65) covered; lowest bracket is correctly the catch-all 'else'.",
+    "students list query for parent role now uses case-insensitive regex match on parent_email — verified both Adaeze and Emeka returned (backend test_11 passed)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/p0_test.py (new — 14 P0-focused tests)"
+  ],
+  "success_rate": {"backend": "100% (14/14 P0 tests)", "frontend": "100% on P0 flows (4/4: register->pending redirect, pending page content, super-admin queue + code dialog, ReportCard upgrades + brand color)"},
+  "test_credentials": "All seeded creds in /app/memory/test_credentials.md verified.",
+  "seed_data_creation": "Tests create TEST_p0_*@example.com schools (one approved, one rejected) and one extra TEST_uiqueue_* school used in the live super-admin queue UI test. They remain in DB but are isolated by TEST_ prefix.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Run `pytest /app/backend/tests/p0_test.py -v` (needs REACT_APP_BACKEND_URL exported). Also iteration_2.json's 45-test full suite still passes. P0#1 e2e gate, P0#10 report upgrades and P0#11 parent children list are fully verified."
+}

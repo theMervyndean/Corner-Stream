@@ -1,0 +1,73 @@
+{
+  "summary": "First-pass full-stack testing of Corner Streams MVP. Backend: 29/30 pytest tests passed. Frontend: landing page, pricing toggle, contact form, parent login, debt-lock display, and report card render verified end-to-end. One blocking backend bug found: Stripe checkout-status endpoint returns 500 due to a library validation error in emergentintegrations (CheckoutReturn polling will fail).",
+  "backend_issues": {
+    "critical": [
+      {
+        "endpoint": "GET /api/payments/checkout/status/{session_id}",
+        "issue": "Returns 500. Root cause is inside emergentintegrations.payments.stripe.checkout.get_checkout_status — pydantic ValidationError: 'metadata' Input should be a valid dictionary (Stripe SDK returns a StripeObject for metadata, library does not coerce it to dict). Affects /checkout/return polling on the frontend, so subscription activation after Stripe payment cannot happen via polling.",
+        "priority": "HIGH"
+      }
+    ],
+    "minor": [
+      {
+        "endpoint": "CORS",
+        "issue": "backend/.env FRONTEND_URL is '9d8f5d74-...preview.emergentagent.com' but the live frontend is served from 'digital-results-6.preview.emergentagent.com'. CORSMiddleware allow_origins is therefore wrong; Bearer-token requests still work (no CORS pre-flight on simple GETs / app uses fetch with Authorization header, not credentials), but cookie-based auth from the actual frontend host will be blocked. Update FRONTEND_URL in backend/.env to match REACT_APP_BACKEND_URL host."
+      },
+      {
+        "endpoint": "/api/auth/login",
+        "issue": "No brute-force lockout / rate limiting. Out of scope for Phase-1 MVP per spec but worth flagging."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {
+        "flow": "Stripe checkout return",
+        "issue": "CheckoutReturn page polls /api/payments/checkout/status/{session_id} which returns 500 (see backend critical issue). Subscription activation will never trigger via polling.",
+        "affected_selectors": ["/checkout/return"]
+      }
+    ],
+    "design_issues": [
+      {
+        "screen": "Global",
+        "issues": [
+          "data-testid attributes are NOT present anywhere in the frontend (Landing inputs, Login form, Parent Portal cards/buttons, Report Card, SuperAdmin controls, Stripe choose-plan). System prompt mandates data-testid on all interactive/key informational elements; this hampers automated regression testing.",
+          "Login form fields and Contact-us form fields have no name attribute either — only positional inputs. Add name and data-testid (e.g. login-email-input, login-password-input, login-submit-button, contact-name-input, contact-submit-button)."
+        ]
+      },
+      {
+        "screen": "Login page",
+        "issues": ["Header 'Sign in' link and form 'Sign in' button share the same accessible name; tests must rely on button[type=submit] to disambiguate. Consider renaming the form button to 'Sign in to your account' or add data-testid='login-submit-button'."]
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "Fix /api/payments/checkout/status/{session_id} — wrap stripe_checkout.get_checkout_status() in try/except CheckoutError and either upgrade emergentintegrations or fall back to retrieving session status directly via stripe SDK and coercing metadata to dict before constructing CheckoutStatusResponse. Without this, paid Stripe checkouts will not activate subscriptions.",
+    "Update backend/.env FRONTEND_URL to 'https://cbt-portal.preview.emergentagent.com' so CORS allow_origins matches the real frontend host (esp. for cookie-based auth).",
+    "Add data-testid attributes across all interactive elements (login form, register form, contact form, parent portal Result Checker buttons, report-card actions, SuperAdmin kill-switch and password override dialog, Stripe 'Choose plan' buttons, Pricing toggle).",
+    "Optionally seed an initial scores set for Emeka so admins can preview a debt-locked report after they clear the balance."
+  ],
+  "critical_code_review_comments": [
+    "Stripe checkout-status endpoint has no error handling around get_checkout_status — any library exception bubbles up as 500. Wrap in try/except and return a clean 502/503 with a message so the frontend polling loop can degrade gracefully.",
+    "auth_utils.set_auth_cookie hardcodes secure=True, samesite='none' — fine for production HTTPS preview, but breaks cookie auth on plain http localhost. Frontend currently relies on Bearer token from localStorage so functionally OK.",
+    "routers/scores.py imports the private symbol _calc_grade from db (leading underscore). Promote to a public utility function (e.g. calc_grade) to avoid lint/style warnings and document the grading scale.",
+    "routers/payments.py NGN_PER_USD=1500 hard-coded — acceptable for test, but should at least be configurable via env var.",
+    "Server startup runs seed_demo_data on every restart but does not refresh demo passwords — if test_credentials.md ever changes, existing seeded users will keep old hashes. Consider an idempotent password reseed in dev.",
+    "Frontend Landing/Login/Register/Contact components lack data-testid attributes; Login form button shares text with header link, hindering reliable Playwright targeting."
+  ],
+  "updated_files": [
+    "/app/backend/tests/backend_test.py (created)"
+  ],
+  "success_rate": {"backend": "97% (29/30)", "frontend": "100% of flows tested visually"},
+  "test_credentials": "Verified working: super@cornerstreams.com/Super@123, admin@demo.school/Admin@123, teacher@demo.school/Teacher@123, parent@demo.school/Parent@123. Bcrypt hashes are properly generated ($2b$ format) via bcrypt.gensalt().",
+  "seed_data_creation": "No additional seed data created. Tests created TEST_-prefixed users/students/leads/receipts (auto-cleanup not implemented; volume is small).",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "backend_test.py at /app/backend/tests/backend_test.py covers auth, students, scores, reports, payments, leads, super-admin. Re-run with `pytest /app/backend/tests/backend_test.py -v --junitxml=/app/test_reports/pytest/pytest_results.xml`. Single failing test (test_checkout_creates_session) will keep failing until emergentintegrations Stripe library bug is mitigated. Frontend manual flows tested: landing pricing toggle (₦110,000→₦70,000 ✓), contact form submit → /api/leads ✓, parent login ✓, debt lock for Emeka ✓, Result Checker for Adaeze opens ReportCard with QR, scores, Promoted ✓. Not yet UI-tested: school admin dashboard CRUD, teacher score-entry tables, super-admin kill-switch toggle in UI, Stripe choose-plan redirect to /register.",
+  "rca_of_the_issue": "Stripe checkout-status 500: emergentintegrations/payments/stripe/checkout.py constructs CheckoutStatusResponse(metadata=session.metadata, ...) where session.metadata is a stripe.api_resources StripeObject (subclass of dict but not accepted as dict by pydantic v2 strict typing). Reproduction: POST /api/payments/checkout (school_admin) → save session_id → GET /api/payments/checkout/status/{session_id} → 500. Mitigation in app code: wrap call and on CheckoutError fall back to looking up the local payment_transactions row and return its stored status; or upgrade/patch emergentintegrations to coerce dict(session.metadata) before pydantic validation."
+}

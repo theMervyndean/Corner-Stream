@@ -1,0 +1,340 @@
+"""Payments router — Stripe checkout + bank-transfer receipt upload."""
+import os
+from datetime import datetime, timezone, timedelta
+from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel, EmailStr
+from typing import Optional
+from emergentintegrations.payments.stripe.checkout import (
+    StripeCheckout, CheckoutSessionRequest,
+)
+from db import get_db, new_id, now_iso
+from auth_utils import get_current_user, require_roles
+
+router = APIRouter(prefix="/payments", tags=["payments"])
+
+# Server-defined pricing (NGN). Charged in USD using fixed conversion for test.
+PRICING_NGN = {
+    "cbt_essentials": {"1_term": 40000, "2_terms": 70000, "full_session": 110000},
+    "digital_reports": {"1_term": 50000, "2_terms": 90000, "full_session": 140000},
+    "financial_ledger": {"1_term": 40000, "2_terms": 70000, "full_session": 110000},
+    "unified_enterprise": {"full_session": 200000},
+}
+NGN_PER_USD = 1500  # fixed test conversion
+
+
+def _amount_usd(tier: str, duration: str) -> float:
+    if tier not in PRICING_NGN:
+        raise HTTPException(status_code=400, detail=f"Unknown tier: {tier}")
+    if duration not in PRICING_NGN[tier]:
+        raise HTTPException(status_code=400, detail=f"Invalid duration for tier {tier}")
+    ngn = PRICING_NGN[tier][duration]
+    return round(ngn / NGN_PER_USD, 2)
+
+
+def _duration_days(duration: str) -> int:
+    return {"1_term": 90, "2_terms": 180, "full_session": 270}.get(duration, 90)
+
+
+class CheckoutInit(BaseModel):
+    tier: str
+    duration: str
+    origin_url: str
+
+
+@router.get("/pricing")
+async def get_pricing():
+    return {"pricing_ngn": PRICING_NGN, "ngn_per_usd": NGN_PER_USD}
+
+
+@router.post("/checkout")
+async def create_checkout(payload: CheckoutInit, http_request: Request, user: dict = Depends(require_roles("school_admin"))):
+    amount_usd = _amount_usd(payload.tier, payload.duration)
+    api_key = os.environ["STRIPE_API_KEY"]
+    host_url = str(http_request.base_url).rstrip("/")
+    webhook_url = f"{host_url}/api/webhook/stripe"
+    stripe_checkout = StripeCheckout(api_key=api_key, webhook_url=webhook_url)
+
+    success_url = f"{payload.origin_url.rstrip('/')}/checkout/return?session_id={{CHECKOUT_SESSION_ID}}"
+    cancel_url = f"{payload.origin_url.rstrip('/')}/dashboard/school"
+    metadata = {
+        "tier": payload.tier,
+        "duration": payload.duration,
+        "school_id": user.get("school_id") or "",
+        "user_id": user["id"],
+        "user_email": user["email"],
+    }
+    req = CheckoutSessionRequest(
+        amount=amount_usd, currency="usd",
+        success_url=success_url, cancel_url=cancel_url, metadata=metadata,
+    )
+    session = await stripe_checkout.create_checkout_session(req)
+
+    db = get_db()
+    await db.payment_transactions.insert_one({
+        "id": new_id(),
+        "session_id": session.session_id,
+        "amount": amount_usd,
+        "currency": "usd",
+        "metadata": metadata,
+        "payment_status": "initiated",
+        "status": "open",
+        "school_id": user.get("school_id"),
+        "tier": payload.tier,
+        "duration": payload.duration,
+        "created_at": now_iso(),
+        "updated_at": now_iso(),
+    })
+    return {"url": session.url, "session_id": session.session_id, "amount_usd": amount_usd}
+
+
+def _retrieve_session_direct(session_id: str) -> dict:
+    """Retrieve checkout session via stripe SDK directly (bypasses buggy emergentintegrations metadata coercion)."""
+    import stripe
+    stripe.api_key = os.environ["STRIPE_API_KEY"]
+    session = stripe.checkout.Session.retrieve(session_id)
+    return {
+        "status": session.status,
+        "payment_status": session.payment_status,
+        "amount_total": session.amount_total,
+        "currency": session.currency,
+        "metadata": dict(session.metadata or {}),
+    }
+
+
+@router.get("/checkout/status/{session_id}")
+async def checkout_status(session_id: str, user: dict = Depends(get_current_user)):
+    db = get_db()
+    txn = await db.payment_transactions.find_one({"session_id": session_id}, {"_id": 0})
+    if not txn:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+
+    # Try stripe SDK directly (avoids emergentintegrations metadata pydantic bug)
+    try:
+        info = _retrieve_session_direct(session_id)
+        status_str = info["status"]
+        payment_status = info["payment_status"]
+        amount_total = info["amount_total"]
+        currency = info["currency"]
+    except Exception:
+        # Fallback to locally-stored values (kept fresh by /api/webhook/stripe)
+        status_str = txn.get("status", "open")
+        payment_status = txn.get("payment_status", "initiated")
+        amount_total = int(round((txn.get("amount") or 0) * 100))
+        currency = txn.get("currency", "usd")
+
+    await db.payment_transactions.update_one(
+        {"session_id": session_id},
+        {"$set": {"status": status_str, "payment_status": payment_status, "updated_at": now_iso()}},
+    )
+
+    # If paid AND not yet applied, activate subscription
+    if payment_status == "paid" and not txn.get("applied"):
+        meta = txn.get("metadata", {})
+        school_id = meta.get("school_id")
+        tier = meta.get("tier")
+        duration = meta.get("duration")
+        if school_id:
+            expires = (datetime.now(timezone.utc) + timedelta(days=_duration_days(duration))).isoformat()
+            await db.schools.update_one({"id": school_id}, {"$set": {
+                "subscription_tier": tier,
+                "subscription_duration": duration,
+                "subscription_expires_at": expires,
+                "kill_switch": False,
+            }})
+            await db.payment_transactions.update_one({"session_id": session_id}, {"$set": {"applied": True}})
+
+    return {
+        "session_id": session_id,
+        "status": status_str,
+        "payment_status": payment_status,
+        "amount_total": amount_total,
+        "currency": currency,
+    }
+
+
+class BankReceiptIn(BaseModel):
+    tier: str
+    duration: str
+    amount_ngn: float
+    file_data_url: str
+    note: Optional[str] = ""
+
+
+class PublicBankReceiptIn(BaseModel):
+    school_email: EmailStr
+    tier: str
+    duration: str
+    amount_ngn: float
+    file_data_url: str
+    note: Optional[str] = ""
+    whatsapp_code: Optional[str] = ""
+
+
+@router.post("/bank-receipt-public")
+async def upload_bank_receipt_public(payload: PublicBankReceiptIn):
+    """Public endpoint for pending schools (cannot log in yet) to submit their first receipt."""
+    db = get_db()
+    email = payload.school_email.lower().strip()
+    user = await db.users.find_one({"email": email, "role": "school_admin"})
+    if not user:
+        raise HTTPException(status_code=404, detail="School admin email not found. Please register first.")
+    return await _store_receipt_and_maybe_activate(
+        db=db, school_id=user["school_id"], submitted_by=email,
+        tier=payload.tier, duration=payload.duration, amount_ngn=payload.amount_ngn,
+        file_data_url=payload.file_data_url, note=payload.note, whatsapp_code=payload.whatsapp_code,
+    )
+
+
+@router.post("/submit-verification")
+async def submit_verification(payload: BankReceiptIn, code: str = "", user: dict = Depends(require_roles("school_admin"))):
+    """In-dashboard endpoint — school admin uploads receipt + types 6-digit code.
+    If code matches the one super admin generated, school is auto-activated immediately.
+    Otherwise it sits in the verification queue until super admin approves manually."""
+    db = get_db()
+    return await _store_receipt_and_maybe_activate(
+        db=db, school_id=user["school_id"], submitted_by=user["email"],
+        tier=payload.tier, duration=payload.duration, amount_ngn=payload.amount_ngn,
+        file_data_url=payload.file_data_url, note=payload.note, whatsapp_code=code,
+    )
+
+
+async def _store_receipt_and_maybe_activate(*, db, school_id, submitted_by, tier, duration, amount_ngn, file_data_url, note, whatsapp_code):
+    """Shared logic: insert receipt, then auto-activate if the typed code matches the school's verification_code."""
+    from datetime import datetime, timezone, timedelta
+    code = (whatsapp_code or "").strip()
+    school = await db.schools.find_one({"id": school_id}, {"_id": 0})
+    if not school:
+        raise HTTPException(status_code=404, detail="School not found")
+
+    doc = {
+        "id": new_id(),
+        "school_id": school_id,
+        "submitted_by": submitted_by,
+        "tier": tier,
+        "duration": duration,
+        "amount_ngn": amount_ngn,
+        "file_data_url": file_data_url,
+        "note": note or "",
+        "whatsapp_code": code,
+        "status": "pending",
+        "created_at": now_iso(),
+    }
+    await db.bank_receipts.insert_one(doc)
+
+    # Auto-activate when typed code matches super-admin-generated code
+    stored_code = school.get("verification_code")
+    if stored_code and code and stored_code == code:
+        days = {"1_term": 90, "2_terms": 180, "full_session": 270}.get(duration, 90)
+        expires = (datetime.now(timezone.utc) + timedelta(days=days)).isoformat()
+        await db.schools.update_one(
+            {"id": school_id},
+            {"$set": {
+                "verification_status": "active",
+                "verification_code": None,
+                "verified_at": now_iso(),
+                "verified_by": "auto-code-match",
+                "subscription_tier": tier,
+                "subscription_duration": duration,
+                "subscription_expires_at": expires,
+                "kill_switch": False,
+            }},
+        )
+        await db.bank_receipts.update_one(
+            {"id": doc["id"]},
+            {"$set": {"status": "approved", "decided_by": "auto-code-match", "updated_at": now_iso()}},
+        )
+        return {"ok": True, "activated": True, "message": "Dashboard unlocked. Welcome to Corner Streams."}
+
+    # Otherwise flip to pending_code and wait for super admin
+    await db.schools.update_one(
+        {"id": school_id},
+        {"$set": {"verification_status": "pending_code", "updated_at": now_iso()}},
+    )
+    if not stored_code:
+        return {"ok": True, "activated": False, "message": "Receipt received. Corner Streams will WhatsApp you the activation code within hours, then paste it here to unlock."}
+    return {"ok": True, "activated": False, "message": "Code didn't match yet. Super Admin will review and activate your dashboard within hours."}
+
+
+@router.post("/bank-receipt-public-legacy-deleted")
+async def _placeholder():
+    pass
+
+
+@router.post("/bank-receipt")
+async def upload_bank_receipt(payload: BankReceiptIn, user: dict = Depends(require_roles("school_admin"))):
+    db = get_db()
+    doc = {
+        "id": new_id(),
+        "school_id": user["school_id"],
+        "submitted_by": user["email"],
+        "tier": payload.tier,
+        "duration": payload.duration,
+        "amount_ngn": payload.amount_ngn,
+        "file_data_url": payload.file_data_url,
+        "note": payload.note or "",
+        "status": "pending",
+        "created_at": now_iso(),
+    }
+    await db.bank_receipts.insert_one(doc)
+    doc.pop("_id", None)
+    # Don't return huge data URL in list responses; keep here for confirmation
+    return {"receipt": {k: v for k, v in doc.items() if k != "file_data_url"}}
+
+
+@router.get("/bank-receipts")
+async def list_bank_receipts(user: dict = Depends(get_current_user)):
+    db = get_db()
+    if user["role"] == "super_admin":
+        q = {}
+    elif user["role"] == "school_admin":
+        q = {"school_id": user["school_id"]}
+    else:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    receipts = await db.bank_receipts.find(q, {"_id": 0, "file_data_url": 0}).sort("created_at", -1).to_list(500)
+    return {"receipts": receipts}
+
+
+@router.get("/bank-receipts/{receipt_id}")
+async def get_bank_receipt(receipt_id: str, user: dict = Depends(require_roles("super_admin", "school_admin"))):
+    db = get_db()
+    q = {"id": receipt_id}
+    if user["role"] == "school_admin":
+        q["school_id"] = user["school_id"]
+    receipt = await db.bank_receipts.find_one(q, {"_id": 0})
+    if not receipt:
+        raise HTTPException(status_code=404, detail="Receipt not found")
+    return {"receipt": receipt}
+
+
+class ReceiptDecision(BaseModel):
+    decision: str  # "approve" or "reject"
+    note: Optional[str] = ""
+
+
+@router.post("/bank-receipts/{receipt_id}/decision")
+async def decide_receipt(receipt_id: str, payload: ReceiptDecision, user: dict = Depends(require_roles("super_admin"))):
+    if payload.decision not in ("approve", "reject"):
+        raise HTTPException(status_code=400, detail="decision must be approve|reject")
+    db = get_db()
+    receipt = await db.bank_receipts.find_one({"id": receipt_id})
+    if not receipt:
+        raise HTTPException(status_code=404, detail="Receipt not found")
+    new_status = "approved" if payload.decision == "approve" else "rejected"
+    await db.bank_receipts.update_one({"id": receipt_id}, {"$set": {
+        "status": new_status,
+        "decided_by": user["email"],
+        "decision_note": payload.note,
+        "updated_at": now_iso(),
+    }})
+    if new_status == "approved":
+        expires = (datetime.now(timezone.utc) + timedelta(days=_duration_days(receipt["duration"]))).isoformat()
+        await db.schools.update_one({"id": receipt["school_id"]}, {"$set": {
+            "subscription_tier": receipt["tier"],
+            "subscription_duration": receipt["duration"],
+            "subscription_expires_at": expires,
+            "kill_switch": False,
+            "verification_status": "active",
+        }})
+    elif new_status == "rejected":
+        await db.schools.update_one({"id": receipt["school_id"]}, {"$set": {"verification_status": "rejected"}})
+    return {"ok": True, "status": new_status}
