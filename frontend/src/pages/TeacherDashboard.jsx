@@ -17,7 +17,7 @@ import StarRating from "@/components/StarRating.jsx";
 import {
   Save, Plus, Trash2, Eye, Image as ImageIcon, X as XIcon, FileSpreadsheet, Users,
   Menu, ChevronRight, LogOut, BadgeCheck, LayoutDashboard, ClipboardList, FileBarChart,
-  BookOpen, GraduationCap,
+  BookOpen, GraduationCap, Lock,
 } from "lucide-react";
 import BulkUploadDialog from "@/components/BulkUploadDialog.jsx";
 
@@ -68,6 +68,22 @@ export default function TeacherDashboard() {
     () => Boolean(user?.is_class_teacher) || myClasses.length > 0,
     [user, myClasses]
   );
+
+  // ─── Subscription gating (Prompt 5a) ───
+  // Frontend-derived from school.subscription_tier. unified_enabled is the
+  // master bypass — when true, every panel is unlocked.
+  const subscriptionFlags = useMemo(() => {
+    const tier = school?.subscription_tier || "";
+    return {
+      results_enabled: tier === "digital_reports",
+      financials_enabled: tier === "financial_ledger", // tracked but not consumed on TeacherDashboard
+      cbt_enabled: tier === "cbt_essentials",
+      unified_enabled: tier === "unified_enterprise",
+    };
+  }, [school]);
+  const canSeeScores = subscriptionFlags.unified_enabled || subscriptionFlags.results_enabled;
+  const canSeeCBT = subscriptionFlags.unified_enabled || subscriptionFlags.cbt_enabled;
+  const canSeeClassReports = (subscriptionFlags.unified_enabled || subscriptionFlags.results_enabled) && isClassTeacher;
 
   const allowTrueFalse = (school?.school_type === "primary" || school?.school_type === "mixed");
 
@@ -291,10 +307,10 @@ export default function TeacherDashboard() {
 
   // ------- Sidebar nav -------
   const NAV = [
-    { k: "overview", l: "Overview", I: LayoutDashboard },
-    { k: "scores", l: "Scores Panel", I: ClipboardList },
-    { k: "cbt", l: "CBT Results", I: FileBarChart },
-    ...(isClassTeacher ? [{ k: "reports", l: "My Class Reports", I: GraduationCap }] : []),
+    { k: "overview", l: "Overview", I: LayoutDashboard, locked: false },
+    { k: "scores", l: "Scores Panel", I: ClipboardList, locked: !canSeeScores },
+    { k: "cbt", l: "CBT Results", I: FileBarChart, locked: !canSeeCBT },
+    ...(isClassTeacher ? [{ k: "reports", l: "My Class Reports", I: GraduationCap, locked: !canSeeClassReports }] : []),
   ];
   const currentLabel = NAV.find((n) => n.k === tab)?.l || "Dashboard";
 
@@ -322,11 +338,12 @@ export default function TeacherDashboard() {
               onClick={() => { onClickItem(n.k); setDrawerOpen(false); }}
               className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-md text-xs transition-all duration-200 ${active ? "bg-white text-[#002147] shadow-sm font-semibold" : "text-white/85 hover:bg-white/10"}`}
               data-testid={`teacher-nav-${n.k}`}
-              title={n.l}
+              title={n.locked ? "Locked — ask your School Admin to upgrade" : n.l}
             >
               <Icon size={15} className="flex-shrink-0" />
               <span className="hidden lg:inline truncate flex-1 text-left">{n.l}</span>
-              {active && <ChevronRight size={12} className="hidden lg:inline" />}
+              {n.locked && <Lock size={11} className={`flex-shrink-0 ${active ? "text-slate-500" : "text-white/55"}`} data-testid={`teacher-nav-${n.k}-lock`} />}
+              {active && !n.locked && <ChevronRight size={12} className="hidden lg:inline" />}
             </button>
           );
         })}
@@ -501,6 +518,10 @@ export default function TeacherDashboard() {
 
             {/* ---------------- SCORES PANEL ---------------- */}
             <TabsContent value="scores" className="cs-pane-fade">
+              {!canSeeScores ? (
+                <LockedModuleCard moduleKey="scores" moduleName="Scores Panel" />
+              ) : (
+              <>
               <div className="cs-card p-5 grid sm:grid-cols-3 gap-4">
                 <div>
                   <Label>Class</Label>
@@ -647,10 +668,16 @@ export default function TeacherDashboard() {
                   )}
                 </div>
               </div>
+              </>
+              )}
             </TabsContent>
 
             {/* ---------------- CBT RESULTS ---------------- */}
             <TabsContent value="cbt" className="cs-pane-fade">
+              {!canSeeCBT ? (
+                <LockedModuleCard moduleKey="cbt" moduleName="CBT Results" />
+              ) : (
+              <>
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-display font-semibold cs-text-navy text-lg">CBT exam library</h3>
                 <Button onClick={openCreateExam} className="cs-bg-green text-white hover:opacity-90 rounded-full" data-testid="cbt-new-exam"><Plus size={14} className="mr-1" /> New exam</Button>
@@ -704,11 +731,16 @@ export default function TeacherDashboard() {
                   </TableBody>
                 </Table>
               </div>
+              </>
+              )}
             </TabsContent>
 
             {/* ---------------- MY CLASS REPORTS (class teacher only) ---------------- */}
             {isClassTeacher && (
               <TabsContent value="reports" className="cs-pane-fade">
+                {!canSeeClassReports ? (
+                  <LockedModuleCard moduleKey="reports" moduleName="My Class Reports" />
+                ) : (
                 <div className="cs-card p-6" data-testid="teacher-reports-stub">
                   <div className="flex items-start gap-3 mb-4">
                     <div className="w-11 h-11 rounded-lg cs-bg-navy text-white flex items-center justify-center shrink-0"><GraduationCap size={20} /></div>
@@ -727,6 +759,7 @@ export default function TeacherDashboard() {
                     </p>
                   </div>
                 </div>
+                )}
               </TabsContent>
             )}
           </Tabs>
@@ -879,6 +912,21 @@ export default function TeacherDashboard() {
           {attemptsDlg && <ExamAttemptsTable examId={attemptsDlg.id} />}
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+function LockedModuleCard({ moduleKey, moduleName }) {
+  return (
+    <div className="cs-card p-10 text-center" data-testid={`teacher-locked-${moduleKey}`}>
+      <div className="mx-auto w-14 h-14 rounded-full bg-slate-100 cs-text-navy flex items-center justify-center mb-4">
+        <Lock size={26} />
+      </div>
+      <div className="eyebrow mb-2">MODULE LOCKED</div>
+      <h3 className="font-display font-bold text-xl cs-text-navy">{moduleName} is locked</h3>
+      <p className="text-sm text-slate-600 mt-3 max-w-md mx-auto leading-relaxed">
+        This module is locked under your school&apos;s current subscription tier. Contact your School Administrator to unlock this feature.
+      </p>
     </div>
   );
 }
