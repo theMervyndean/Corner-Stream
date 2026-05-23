@@ -17,9 +17,10 @@ import StarRating from "@/components/StarRating.jsx";
 import {
   Save, Plus, Trash2, Eye, Image as ImageIcon, X as XIcon, FileSpreadsheet, Users,
   Menu, ChevronRight, LogOut, BadgeCheck, LayoutDashboard, ClipboardList, FileBarChart,
-  BookOpen, GraduationCap, Lock,
+  BookOpen, GraduationCap, Lock, User, Upload, Download,
 } from "lucide-react";
 import BulkUploadDialog from "@/components/BulkUploadDialog.jsx";
+import * as XLSX from "xlsx";
 
 const SKILLS = ["Punctuality", "Attentiveness", "Neatness", "Honesty", "Sportsmanship", "Leadership"];
 const TERMS = ["1st Term", "2nd Term", "3rd Term"];
@@ -84,6 +85,20 @@ export default function TeacherDashboard() {
   const canSeeScores = subscriptionFlags.unified_enabled || subscriptionFlags.results_enabled;
   const canSeeCBT = subscriptionFlags.unified_enabled || subscriptionFlags.cbt_enabled;
   const canSeeClassReports = (subscriptionFlags.unified_enabled || subscriptionFlags.results_enabled) && isClassTeacher;
+
+  // Subjects assigned to this teacher by the admin (flat list — same chips render in every class row)
+  const mySubjects = useMemo(() => {
+    const arr = Array.isArray(user?.assigned_subjects) ? user.assigned_subjects : [];
+    return Array.from(new Set(arr.map((s) => (s || "").trim()).filter(Boolean)));
+  }, [user]);
+
+  // Bulk score-sheet upload state (Profile & Assignments tab)
+  const [bulkClass, setBulkClass] = useState("");
+  const [bulkTerm, setBulkTerm] = useState("1st Term");
+  const [bulkYear, setBulkYear] = useState("2025/2026");
+  const [bulkFile, setBulkFile] = useState(null);
+  const [bulkParsed, setBulkParsed] = useState(null); // { rows, count } | null
+  const [bulkBusy, setBulkBusy] = useState(false);
 
   const allowTrueFalse = (school?.school_type === "primary" || school?.school_type === "mixed");
 
@@ -305,12 +320,83 @@ export default function TeacherDashboard() {
     catch (err) { toast.error(formatApiError(err.response?.data?.detail) || err.message); }
   };
 
+  // ─── Bulk score-sheet handlers (5b layout — wires to existing /scores/batch) ───
+  const downloadBulkTemplate = () => {
+    const cls = bulkClass || (myClasses[0] || "JSS 1");
+    const subjs = mySubjects.length ? mySubjects : ["Subject A"];
+    // Roster of students in the chosen class (from already-loaded data)
+    const roster = students.filter((s) => s.class_name === cls);
+    const rows = [];
+    (roster.length ? roster : [{ id: "<student_id>", name: "<student name>" }]).forEach((st) => {
+      subjs.forEach((subj) => {
+        rows.push({
+          student_id: st.id,
+          student_name: st.name,
+          class_name: cls,
+          subject: subj,
+          term: bulkTerm,
+          year: bulkYear,
+          ca_score: "",
+          exam_score: "",
+        });
+      });
+    });
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Scores");
+    XLSX.writeFile(wb, `score-sheet-${cls.replace(/\s+/g, "_")}-${bulkTerm.replace(/\s+/g, "_")}.xlsx`);
+    toast.success("Template downloaded");
+  };
+
+  const onBulkFile = async (file) => {
+    if (!file) return;
+    setBulkFile(file);
+    setBulkParsed(null);
+    try {
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, { type: "array" });
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
+      setBulkParsed({ rows, count: rows.length });
+    } catch (e) {
+      toast.error(`Could not read file: ${e.message}`);
+      setBulkFile(null);
+    }
+  };
+
+  const submitBulkScores = async () => {
+    if (!bulkParsed || !bulkParsed.rows.length) { toast.error("No rows to upload"); return; }
+    setBulkBusy(true);
+    try {
+      const items = bulkParsed.rows
+        .filter((r) => r.student_id && r.subject)
+        .map((r) => ({
+          student_id: String(r.student_id).trim(),
+          term: String(r.term || bulkTerm).trim(),
+          year: String(r.year || bulkYear).trim(),
+          subject: String(r.subject).trim(),
+          ca_score: Number(r.ca_score) || 0,
+          exam_score: Number(r.exam_score) || 0,
+        }));
+      if (!items.length) { toast.error("No valid rows (need student_id + subject)"); return; }
+      const { data } = await api.post("/scores/batch", { items });
+      toast.success(`Uploaded ${(data?.saved || []).length} of ${items.length} rows`);
+      setBulkFile(null);
+      setBulkParsed(null);
+    } catch (e) {
+      toast.error(formatApiError(e.response?.data?.detail) || e.message);
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
   // ------- Sidebar nav -------
   const NAV = [
     { k: "overview", l: "Overview", I: LayoutDashboard, locked: false },
     { k: "scores", l: "Scores Panel", I: ClipboardList, locked: !canSeeScores },
     { k: "cbt", l: "CBT Results", I: FileBarChart, locked: !canSeeCBT },
     ...(isClassTeacher ? [{ k: "reports", l: "My Class Reports", I: GraduationCap, locked: !canSeeClassReports }] : []),
+    { k: "profile", l: "Profile & Assignments", I: User, locked: false },
   ];
   const currentLabel = NAV.find((n) => n.k === tab)?.l || "Dashboard";
 
@@ -430,6 +516,7 @@ export default function TeacherDashboard() {
               <TabsTrigger value="scores">Scores</TabsTrigger>
               <TabsTrigger value="cbt">CBT</TabsTrigger>
               {isClassTeacher && <TabsTrigger value="reports">Reports</TabsTrigger>}
+              <TabsTrigger value="profile">Profile</TabsTrigger>
             </TabsList>
 
             {/* ---------------- OVERVIEW ---------------- */}
@@ -762,6 +849,146 @@ export default function TeacherDashboard() {
                 )}
               </TabsContent>
             )}
+
+            {/* ---------------- PROFILE & ASSIGNMENTS (5b) ---------------- */}
+            <TabsContent value="profile" className="cs-pane-fade">
+              <div className="grid lg:grid-cols-2 gap-6">
+                {/* Card A — Identity + class/subject assignments grid */}
+                <div className="cs-card p-6" data-testid="teacher-profile-card">
+                  <div className="flex items-start gap-4">
+                    <div className="w-14 h-14 rounded-full cs-bg-navy text-white flex items-center justify-center font-bold flex-shrink-0">
+                      {(user?.name || "?").split(" ").filter(Boolean).slice(0, 2).map((p) => p[0]?.toUpperCase()).join("")}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="eyebrow">TEACHER PROFILE</div>
+                      <h3 className="font-display font-bold text-xl cs-text-navy truncate" data-testid="teacher-profile-name">{user?.name || "—"}</h3>
+                      <div className="text-xs text-slate-500 truncate" data-testid="teacher-profile-email">{user?.email || "—"}</div>
+                      <div className="flex flex-wrap gap-2 mt-2">
+                        <Badge className="cs-bg-navy text-white">Teacher</Badge>
+                        {isClassTeacher && <Badge className="cs-bg-green text-white" data-testid="teacher-profile-classteacher">Class teacher</Badge>}
+                        {school?.name && <Badge variant="outline" className="cs-text-navy">{school.name}</Badge>}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-6">
+                    <div className="flex items-center justify-between mb-3">
+                      <h4 className="font-semibold cs-text-navy text-sm">Classes & subjects assigned to you</h4>
+                      <span className="text-[11px] text-slate-500">Set by your School Admin</span>
+                    </div>
+
+                    {myClasses.length === 0 ? (
+                      <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50/60 p-6 text-center text-sm text-slate-500" data-testid="teacher-profile-no-classes">
+                        No classes assigned yet — ask your School Administrator to assign you to a class.
+                      </div>
+                    ) : (
+                      <div className="space-y-3" data-testid="teacher-profile-grid">
+                        {myClasses.map((cls) => (
+                          <div key={cls} className="rounded-lg border border-slate-200 bg-white p-3" data-testid={`teacher-profile-row-${cls}`}>
+                            <div className="flex items-center gap-2 mb-2">
+                              <div className="w-7 h-7 rounded-md cs-bg-blue text-white flex items-center justify-center"><BookOpen size={14} /></div>
+                              <div className="font-semibold cs-text-navy text-sm">{cls}</div>
+                            </div>
+                            <div className="flex flex-wrap gap-1.5">
+                              {mySubjects.length === 0 ? (
+                                <span className="text-xs text-slate-500 italic">No subjects assigned — ask your School Admin.</span>
+                              ) : mySubjects.map((subj) => (
+                                <span key={subj} className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-medium bg-slate-100 cs-text-navy border border-slate-200" data-testid={`teacher-profile-chip-${cls}-${subj}`}>
+                                  {subj}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Card B — Bulk score-sheet upload zone (gated by results_enabled || unified_enabled) */}
+                {!canSeeScores ? (
+                  <LockedModuleCard moduleKey="bulk-scores" moduleName="Bulk Score-Sheet Upload" />
+                ) : (
+                <div className="cs-card p-6" data-testid="teacher-bulk-scores-card">
+                  <div className="flex items-start gap-3">
+                    <div className="w-11 h-11 rounded-lg cs-bg-green text-white flex items-center justify-center flex-shrink-0"><FileSpreadsheet size={20} /></div>
+                    <div className="flex-1">
+                      <h3 className="font-display font-semibold cs-text-navy text-lg">Bulk score-sheet upload</h3>
+                      <p className="text-sm text-slate-500 mt-1">
+                        Upload a filled Excel template to push CA & exam scores to the gradebook in bulk.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 grid sm:grid-cols-3 gap-3">
+                    <div>
+                      <Label className="text-xs">Class</Label>
+                      <Select value={bulkClass} onValueChange={setBulkClass}>
+                        <SelectTrigger data-testid="bulk-class"><SelectValue placeholder="Pick class" /></SelectTrigger>
+                        <SelectContent>{myClasses.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label className="text-xs">Term</Label>
+                      <Select value={bulkTerm} onValueChange={setBulkTerm}>
+                        <SelectTrigger data-testid="bulk-term"><SelectValue /></SelectTrigger>
+                        <SelectContent>{TERMS.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label className="text-xs">Year</Label>
+                      <Input value={bulkYear} onChange={(e) => setBulkYear(e.target.value)} data-testid="bulk-year" />
+                    </div>
+                  </div>
+
+                  <Button
+                    onClick={downloadBulkTemplate}
+                    variant="outline"
+                    className="w-full mt-3"
+                    data-testid="bulk-template-download"
+                    disabled={!bulkClass && myClasses.length === 0}
+                  >
+                    <Download size={14} className="mr-2" /> Download template (.xlsx)
+                  </Button>
+
+                  <label
+                    className="mt-4 block rounded-lg border-2 border-dashed border-slate-300 hover:border-slate-400 bg-slate-50/60 p-6 text-center cursor-pointer transition-colors"
+                    data-testid="bulk-drop-zone"
+                  >
+                    <Upload size={22} className="mx-auto text-slate-400" />
+                    <div className="mt-2 text-sm font-semibold cs-text-navy">
+                      {bulkFile ? bulkFile.name : "Click to choose an Excel file"}
+                    </div>
+                    <div className="text-xs text-slate-500 mt-1">
+                      .xlsx · columns: student_id · subject · term · year · ca_score · exam_score
+                    </div>
+                    <input
+                      type="file"
+                      accept=".xlsx,.xls,.csv"
+                      className="hidden"
+                      onChange={(e) => onBulkFile(e.target.files?.[0])}
+                      data-testid="bulk-file-input"
+                    />
+                  </label>
+
+                  {bulkParsed && (
+                    <div className="mt-3 text-xs text-slate-600 px-3 py-2 rounded bg-emerald-50 border border-emerald-200" data-testid="bulk-parsed-summary">
+                      Parsed <strong className="cs-text-navy">{bulkParsed.count}</strong> row{bulkParsed.count === 1 ? "" : "s"}. Click upload to push to the gradebook.
+                    </div>
+                  )}
+
+                  <Button
+                    onClick={submitBulkScores}
+                    disabled={!bulkParsed || bulkBusy}
+                    className="cs-bg-navy text-white hover:opacity-90 w-full mt-3 rounded-full btn-anim"
+                    data-testid="bulk-submit"
+                  >
+                    {bulkBusy ? "Uploading…" : "Validate & upload"}
+                  </Button>
+                </div>
+                )}
+              </div>
+            </TabsContent>
           </Tabs>
         </div>
       </main>
