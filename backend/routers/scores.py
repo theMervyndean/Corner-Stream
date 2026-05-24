@@ -43,6 +43,14 @@ class SkillIn(BaseModel):
 
 @router.get("")
 async def list_scores(student_id: str, term: Optional[str] = None, user: dict = Depends(get_current_user)):
+    # Student-role blockade (Prompt 14e): academic scores are restricted to the
+    # Parent Portal. A student authenticating directly may not pull their own or
+    # any other student's grade vectors.
+    if user.get("role") == "student":
+        raise HTTPException(
+            status_code=403,
+            detail="Academic reports, termly grades, and mid-term results are restricted and only visible through the Parent Portal account.",
+        )
     db = get_db()
     student = await db.students.find_one({"id": student_id}, {"_id": 0})
     if not student:

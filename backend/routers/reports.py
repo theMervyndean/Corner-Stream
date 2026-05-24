@@ -24,7 +24,9 @@ async def _can_view_student(user: dict, student: dict) -> bool:
     if user["role"] == "parent":
         return student.get("parent_email") == user["email"]
     if user["role"] == "student":
-        return user.get("student_id") == student["id"]
+        # Prompt 14e: academic reports are restricted to the Parent Portal.
+        # Students cannot fetch their own report card or annual session report.
+        return False
     return student["school_id"] == user.get("school_id")
 
 

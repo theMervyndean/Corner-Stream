@@ -6,8 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/lib/auth.jsx";
 import { api, formatApiError } from "@/lib/api";
 import { toast } from "sonner";
-import { BookOpen, FileText, Lock, Play, Trophy, AlertTriangle, CheckCircle2, Mail, Paperclip, MessageSquare, LayoutDashboard } from "lucide-react";
-import { ChartCard, LineSeries, SubjectRadar } from "@/components/Charts.jsx";
+import { BookOpen, FileText, Lock, Play, Trophy, AlertTriangle, Mail, Paperclip, MessageSquare, LayoutDashboard } from "lucide-react";
 
 export default function StudentDashboard() {
   const { user } = useAuth();
@@ -15,7 +14,6 @@ export default function StudentDashboard() {
   const [me, setMe] = useState(null);
   const [exams, setExams] = useState([]);
   const [subjects, setSubjects] = useState([]);
-  const [progress, setProgress] = useState(null);
 
   // ─── Messages & Materials (read-only, local-only) ───
   const [tab, setTab] = useState("overview"); // "overview" | "messages"
@@ -57,13 +55,10 @@ export default function StudentDashboard() {
         const student = meRes.data.student;
         setMe(student);
         setExams(examsRes.data.exams || []);
-        const [subRes, prgRes] = await Promise.all([
-          api.get(`/subjects`, { params: { class_name: student.class_name } }),
-          api.get(`/analytics/student/${student.id}`),
-        ]);
-        const list = subRes.data.class_subjects?.[0]?.subjects || [];
+        // Subjects only — academic progress analytics are restricted to the Parent Portal.
+        const { data: subData } = await api.get(`/subjects`, { params: { class_name: student.class_name } });
+        const list = subData.class_subjects?.[0]?.subjects || [];
         setSubjects(list);
-        setProgress(prgRes.data);
       } catch (e) {
         toast.error(formatApiError(e.response?.data?.detail) || e.message);
       }
@@ -195,51 +190,22 @@ export default function StudentDashboard() {
           </div>
         </div>
 
-        {/* Progress charts */}
-        {progress && (progress.series?.length > 0 || progress.subject_radar?.length > 0) && (
-          <div className="mt-10 grid lg:grid-cols-2 gap-5">
-            {progress.series?.length > 0 && (
-              <ChartCard title="My term progression" subtitle="Average across all subjects" testid="student-chart-progress">
-                <LineSeries data={progress.series} xKey="term" yKey="average" color="#28A745" />
-              </ChartCard>
-            )}
-            {progress.subject_radar?.length > 0 && (
-              <ChartCard title="Subject snapshot" subtitle="Latest term performance by subject" testid="student-chart-radar">
-                <SubjectRadar data={progress.subject_radar} />
-              </ChartCard>
-            )}
-          </div>
-        )}
-
-        {/* Result Checker */}
-        <div className="mt-10 cs-card p-6 flex items-center justify-between flex-wrap gap-4">
-          <div>
-            <h3 className="font-display font-bold cs-text-navy text-lg">Term result</h3>
-            <p className="text-sm text-slate-500 mt-1">View your full digital report card with QR verification.</p>
-          </div>
-          {debt ? (
-            <Button disabled className="bg-slate-200 text-slate-500 rounded-full" data-testid="student-result-locked">
-              <Lock size={14} className="mr-2" /> Locked — clear fees
-            </Button>
-          ) : (
-            <div className="flex flex-wrap gap-2">
-              <Button
-                onClick={() => navigate(`/report/${me.id}/1st%20Term`)}
-                className="cs-bg-navy text-white hover:opacity-90 rounded-full btn-anim"
-                data-testid="student-result-checker"
-              >
-                <CheckCircle2 size={14} className="mr-2" /> Term report
-              </Button>
-              <Button
-                onClick={() => navigate(`/report/annual/${me.id}`)}
-                variant="outline"
-                className="rounded-full btn-anim"
-                data-testid="student-annual-checker"
-              >
-                <CheckCircle2 size={14} className="mr-2" /> Annual session
-              </Button>
+        {/* Progress charts and academic result access — restricted to Parent Portal */}
+        <div className="mt-10 cs-card p-6 bg-slate-50/80 border border-slate-200" data-testid="student-results-locked-notice">
+          <div className="flex items-start gap-4">
+            <div className="w-12 h-12 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center flex-shrink-0">
+              <Lock size={22} />
             </div>
-          )}
+            <div className="flex-1">
+              <h3 className="font-display font-semibold text-slate-700 text-lg">Academic results are private</h3>
+              <p className="text-sm text-slate-600 mt-2 leading-relaxed">
+                Academic reports, termly grades, and mid-term results are restricted and only visible through the Parent Portal account.
+              </p>
+              <p className="text-xs text-slate-500 mt-3">
+                If you need to discuss your performance, please ask your parent or guardian to log in to their portal, or speak to your class teacher directly.
+              </p>
+            </div>
+          </div>
         </div>
         </>
         )}
