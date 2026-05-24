@@ -208,6 +208,17 @@ export default function DigitalReportsDashboard({ school: initialSchool, refresh
     catch (e) { toast.error(formatApiError(e.response?.data?.detail) || e.message); }
   };
 
+  // ─── Teachers tab data (hooks declared BEFORE the early return) ───
+  const [usersList, setUsersList] = useState([]);
+  const [usersLoading, setUsersLoading] = useState(false);
+  useEffect(() => {
+    if (tab !== "users") return;
+    setUsersLoading(true);
+    api.get("/users").then(({ data }) => setUsersList(data.users || []))
+      .catch((e) => toast.error(formatApiError(e.response?.data?.detail) || e.message))
+      .finally(() => setUsersLoading(false));
+  }, [tab]);
+
   if (!school) return <div className="min-h-screen p-10 text-slate-500">Loading…</div>;
 
   // -------- SIDEBAR --------
@@ -597,15 +608,6 @@ export default function DigitalReportsDashboard({ school: initialSchool, refresh
   );
 
   // ─── Teachers/Users tab — minimal read-only roster ───
-  const [usersList, setUsersList] = useState([]);
-  const [usersLoading, setUsersLoading] = useState(false);
-  useEffect(() => {
-    if (tab !== "users") return;
-    setUsersLoading(true);
-    api.get("/users").then(({ data }) => setUsersList(data.users || []))
-      .catch((e) => toast.error(formatApiError(e.response?.data?.detail) || e.message))
-      .finally(() => setUsersLoading(false));
-  }, [tab]);
   const UsersTab = () => (
     <div data-testid="dr-users-tab">
       <div className="flex items-center justify-between mb-4">
