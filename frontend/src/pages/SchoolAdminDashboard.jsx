@@ -576,7 +576,7 @@ export default function SchoolAdminDashboard() {
           );
         })}
         <div className="border-t border-white/10 my-2" />
-        <Button onClick={handleLogout} className="w-full bg-red-500/15 hover:bg-red-500/30 text-white rounded-md text-xs h-9 justify-start gap-2 border border-red-400/30 transition-all duration-200 px-2.5" data-testid="school-sidebar-logout">
+        <Button onClick={handleLogout} className="w-full bg-red-500/15 hover:bg-red-500/30 text-white rounded-md text-xs h-9 justify-start gap-2 transition-all duration-200 px-2.5" data-testid="school-sidebar-logout">
           <LogOut size={14} className="flex-shrink-0" /> <span className="hidden lg:inline">Logout</span>
         </Button>
       </nav>
@@ -1143,6 +1143,7 @@ export default function SchoolAdminDashboard() {
               </div>
             </div>
             <div className="cs-card overflow-hidden">
+              <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow className="cs-bg-navy hover:cs-bg-navy">
@@ -1186,6 +1187,7 @@ export default function SchoolAdminDashboard() {
                   )}
                 </TableBody>
               </Table>
+              </div>
             </div>
           </TabsContent>
 
@@ -1323,6 +1325,7 @@ export default function SchoolAdminDashboard() {
           <TabsContent value="receipts" className="mt-6">
             <h3 className="font-display font-semibold cs-text-navy text-lg mb-4">Bank receipts queue</h3>
             <div className="cs-card overflow-hidden">
+              <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow className="cs-bg-navy hover:cs-bg-navy">
@@ -1348,6 +1351,7 @@ export default function SchoolAdminDashboard() {
                   {!receipts.length && (<TableRow><TableCell colSpan={5} className="text-center text-slate-500 py-8">No receipts submitted yet.</TableCell></TableRow>)}
                 </TableBody>
               </Table>
+              </div>
             </div>
           </TabsContent>
         </Tabs>

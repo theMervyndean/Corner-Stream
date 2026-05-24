@@ -358,7 +358,7 @@ export default function SuperAdmin() {
         <Button onClick={() => setOverrideOpen(true)} className="w-full bg-white/10 hover:bg-white/20 text-white rounded-md text-xs h-9 justify-start gap-2 border border-white/10 transition-all duration-200 px-2.5" data-testid="open-pw-override">
           <KeyRound size={14} className="flex-shrink-0" /> <span className="hidden lg:inline">Password override</span>
         </Button>
-        <Button onClick={handleLogout} className="w-full bg-red-500/15 hover:bg-red-500/30 text-white rounded-md text-xs h-9 justify-start gap-2 border border-red-400/30 transition-all duration-200 px-2.5" data-testid="sidebar-logout">
+        <Button onClick={handleLogout} className="w-full bg-red-500/15 hover:bg-red-500/30 text-white rounded-md text-xs h-9 justify-start gap-2 transition-all duration-200 px-2.5" data-testid="sidebar-logout">
           <LogOut size={14} className="flex-shrink-0" /> <span className="hidden lg:inline">Logout</span>
         </Button>
       </nav>
