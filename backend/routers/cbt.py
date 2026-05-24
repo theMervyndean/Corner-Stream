@@ -50,6 +50,12 @@ class ExamIn(BaseModel):
     year: str
     duration_min: int = Field(ge=1, le=240)
     questions: List[Question]
+    # ─── Score-sync routing (new) ───────────────────────────────────────────
+    # "ca"  → CBT result is written into ca_scores[ca_column_index]
+    # "exam" (default) → CBT result is written into exam_score (legacy behaviour)
+    assessment_type: Literal["ca", "exam"] = "exam"
+    # 0-based index into the school's ca_weights[] when assessment_type == "ca".
+    ca_column_index: Optional[int] = Field(default=None, ge=0, le=4)
 
 
 class ExamUpdate(BaseModel):
@@ -57,6 +63,8 @@ class ExamUpdate(BaseModel):
     duration_min: Optional[int] = None
     questions: Optional[List[Question]] = None
     published: Optional[bool] = None
+    assessment_type: Optional[Literal["ca", "exam"]] = None
+    ca_column_index: Optional[int] = Field(default=None, ge=0, le=4)
 
 
 class SubmitIn(BaseModel):
@@ -117,54 +125,88 @@ async def _student_record_for_user(db, user: dict) -> Optional[dict]:
 
 
 async def _upsert_score_from_cbt(db, student: dict, exam: dict, percent: float, teacher_id: Optional[str]):
-    """Convert CBT percent into the school's configured exam_max and upsert into scores.
-    Per-column CA breakdown is preserved (or initialised from legacy ca_score when missing)."""
+    """Auto-sync a CBT attempt result into the student's scores doc.
+
+    Routing is driven by `exam.assessment_type`:
+    - "ca"   → the CBT result is written into ca_scores[ca_column_index], scaled to
+               that column's weight cap. Other CA columns are preserved if present,
+               else zero-initialised to match the school's ca_count. Exam slot is
+               left untouched (0 on first write).
+    - "exam" → legacy behaviour. CBT result is scaled to exam_max and written into
+               exam_score. ca_scores is initialised to zeros sized to the school's
+               ca_count so legacy queries reading the scalar ca_score don't break.
+
+    The derived scalar `ca_score = sum(ca_scores)` is always recomputed and
+    persisted so parent overview dashboards and other legacy readers keep working.
+    """
     school = await db.schools.find_one(
-        {"id": student["school_id"]}, {"_id": 0, "ca_weights": 1, "exam_max": 1, "ca_max": 1},
+        {"id": student["school_id"]}, {"_id": 0, "ca_weights": 1, "exam_max": 1, "ca_max": 1, "ca_count": 1},
     ) or {}
     exam_max_cfg = int(school.get("exam_max") or 60)
-    ca_weights = school.get("ca_weights") or []
+    ca_weights = list(school.get("ca_weights") or [])
+    # Effective number of CA columns. Falls back to ca_count, then to 1.
+    ca_count = len(ca_weights) if ca_weights else int(school.get("ca_count") or 1)
+    if not ca_weights:
+        # Synthesize a single-column weight array from legacy ca_max so the rest
+        # of the function can treat the per-column path uniformly.
+        ca_weights = [int(school.get("ca_max") or 40)] * ca_count
 
-    exam_score = round((percent / 100) * exam_max_cfg)
-    # Find existing CA to preserve, else default 0
     existing = await db.scores.find_one({
         "student_id": student["id"], "term": exam["term"],
         "year": exam["year"], "subject": exam["subject"],
     })
-    legacy_ca_total = (existing.get("ca_score") if existing else 0) or 0
-    # Preserve existing per-column breakdown if present; otherwise initialise an
-    # array sized to the school's current CA columns. We seed the first slot with
-    # any legacy aggregated ca_score so the total is preserved across the migration.
-    if existing and isinstance(existing.get("ca_scores"), list) and ca_weights and len(existing["ca_scores"]) == len(ca_weights):
-        ca_scores = list(existing["ca_scores"])
-        ca_total = sum(ca_scores)
-    elif ca_weights:
-        ca_scores = [0] * len(ca_weights)
-        # Clamp legacy total into the first column's weight cap
-        ca_scores[0] = min(int(legacy_ca_total), int(ca_weights[0]))
-        ca_total = sum(ca_scores)
-    else:
-        ca_scores = None
-        ca_total = int(legacy_ca_total)
+    legacy_ca_total = int((existing.get("ca_score") if existing else 0) or 0)
+    existing_exam = int((existing.get("exam_score") if existing else 0) or 0)
 
-    total = ca_total + exam_score
+    # Seed ca_scores from existing per-column breakdown if its shape matches the
+    # current school config; else build a zero-filled array sized to ca_count,
+    # carrying any legacy aggregated ca_score forward into the first column
+    # (clamped to that column's weight cap).
+    if existing and isinstance(existing.get("ca_scores"), list) and len(existing["ca_scores"]) == ca_count:
+        ca_scores = [int(v) for v in existing["ca_scores"]]
+    else:
+        ca_scores = [0] * ca_count
+        if legacy_ca_total > 0 and ca_count > 0:
+            ca_scores[0] = min(legacy_ca_total, int(ca_weights[0]))
+
+    assessment_type = (exam.get("assessment_type") or "exam").lower()
+    ca_col = exam.get("ca_column_index")
+
+    if assessment_type == "ca" and ca_col is not None and 0 <= int(ca_col) < ca_count:
+        # Route incoming percent → CA column [ca_col], scaled to that column's max.
+        col_idx = int(ca_col)
+        col_max = int(ca_weights[col_idx])
+        ca_scores[col_idx] = min(col_max, round((percent / 100) * col_max))
+        # Exam slot stays as whatever existed (0 on first write) — we do NOT
+        # touch exam_score on a CA-assessment write.
+        new_exam_score = existing_exam
+    else:
+        # "exam" path (default / legacy) — write to exam_score; ca_scores remain
+        # zero-initialised (or carry forward existing values) so the derived
+        # scalar ca_score stays consistent with the array.
+        new_exam_score = round((percent / 100) * exam_max_cfg)
+
+    ca_total = sum(ca_scores)
+    total = ca_total + new_exam_score
     grade = _calc_grade(total)
+
     doc = {
         "student_id": student["id"],
         "school_id": student["school_id"],
         "term": exam["term"],
         "year": exam["year"],
         "subject": exam["subject"],
-        "ca_score": ca_total,
-        "exam_score": exam_score,
+        "ca_scores": ca_scores,
+        "ca_score": ca_total,           # derived scalar, always sum(ca_scores)
+        "exam_score": new_exam_score,
         "total": total,
         "grade": grade,
         "teacher_id": teacher_id or exam.get("created_by"),
         "source": "cbt",
+        "source_assessment_type": assessment_type,
+        "source_ca_column_index": int(ca_col) if (assessment_type == "ca" and ca_col is not None) else None,
         "updated_at": now_iso(),
     }
-    if ca_scores is not None:
-        doc["ca_scores"] = ca_scores
     if existing:
         await db.scores.update_one({"id": existing["id"]}, {"$set": doc})
     else:
@@ -192,6 +234,8 @@ async def create_exam(payload: ExamIn, user: dict = Depends(require_roles("teach
         "questions": [q.model_dump() for q in payload.questions],
         "published": False,
         "status": "draft",
+        "assessment_type": payload.assessment_type,
+        "ca_column_index": payload.ca_column_index,
         "created_by": user["id"],
         "created_at": now_iso(),
     }
