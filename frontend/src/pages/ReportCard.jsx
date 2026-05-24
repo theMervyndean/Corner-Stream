@@ -55,6 +55,26 @@ export default function ReportCard() {
   const caMax = school?.ca_max ?? 40;
   const examMax = school?.exam_max ?? 60;
 
+  // ─── Dynamic CA columns driven by school.ca_weights ───
+  // Prefer the per-column weight array; fall back to a single-column array
+  // synthesised from the legacy ca_max scalar so old schools keep working.
+  const caWeights = Array.isArray(school?.ca_weights) && school.ca_weights.length > 0
+    ? school.ca_weights.map((n) => Number(n) || 0)
+    : [caMax];
+  const caCount = caWeights.length;
+  // If the school is configured for multiple CA columns AND at least one
+  // score row carries the granular ca_scores array, render the dynamic matrix.
+  // Otherwise we keep the single-column "Total CA" layout for backward compat.
+  const anyHasCaScores = (scores || []).some(
+    (s) => Array.isArray(s.ca_scores) && s.ca_scores.length === caCount,
+  );
+  const useDynamicCAGrid = caCount > 1 && anyHasCaScores;
+  const totalCols = useDynamicCAGrid ? caCount + 5 : 6; // +Subject, Exam, Total, Grade, Remark
+  // Track whether any row is a legacy aggregate so we render the footnote once.
+  const hasLegacyRow = useDynamicCAGrid && (scores || []).some(
+    (s) => !Array.isArray(s.ca_scores) || s.ca_scores.length !== caCount,
+  );
+
   return (
     <div className="min-h-screen bg-slate-100 py-10 print:bg-white print:py-0" data-testid="report-card">
       <div className="max-w-3xl mx-auto px-6 no-print mb-4 flex items-center justify-between">
@@ -106,24 +126,55 @@ export default function ReportCard() {
 
         {/* Academic table */}
         <h3 className="mt-8 font-display font-semibold" style={{ color: brand }}>Academic performance</h3>
-        <table className="mt-2 w-full text-sm border-2" style={{ borderColor: brand }}>
+        <table className="mt-2 w-full text-sm border-2" style={{ borderColor: brand }} data-testid="report-academic-table">
           <thead className="text-white text-xs uppercase" style={{ backgroundColor: brand }}>
-            <tr><th className="p-2 text-left">Subject</th><th className="p-2">CA ({caMax})</th><th className="p-2">Exam ({examMax})</th><th className="p-2">Total</th><th className="p-2">Grade</th><th className="p-2">Remark</th></tr>
+            <tr>
+              <th className="p-2 text-left">Subject</th>
+              {useDynamicCAGrid
+                ? caWeights.map((w, i) => (
+                    <th key={i} className="p-2" data-testid={`th-ca-${i + 1}`}>CA {i + 1} ({w})</th>
+                  ))
+                : <th className="p-2" data-testid="th-ca-total">Total CA ({caWeights.reduce((a, b) => a + b, 0) || caMax})</th>}
+              <th className="p-2">Exam ({examMax})</th>
+              <th className="p-2">Total</th>
+              <th className="p-2">Grade</th>
+              <th className="p-2">Remark</th>
+            </tr>
           </thead>
           <tbody>
-            {scores.map((s) => (
-              <tr key={s.id} className="even:bg-slate-50">
-                <td className="p-2 font-medium">{s.subject}</td>
-                <td className="p-2 text-center">{s.ca_score}</td>
-                <td className="p-2 text-center">{s.exam_score}</td>
-                <td className="p-2 text-center font-semibold">{s.total}</td>
-                <td className="p-2 text-center font-bold" style={{ color: brand }}>{s.grade}</td>
-                <td className="p-2 text-xs text-slate-600">{remarkForGrade(s.grade)}</td>
-              </tr>
-            ))}
-            {!scores.length && <tr><td className="p-3 text-center text-slate-400" colSpan={6}>No scores recorded for this term yet.</td></tr>}
+            {scores.map((s) => {
+              const rowHasCaScores = Array.isArray(s.ca_scores) && s.ca_scores.length === caCount;
+              return (
+                <tr key={s.id} className="even:bg-slate-50" data-testid={`report-row-${s.id}`}>
+                  <td className="p-2 font-medium">{s.subject}</td>
+                  {useDynamicCAGrid ? (
+                    rowHasCaScores
+                      ? s.ca_scores.map((v, i) => (
+                          <td key={i} className="p-2 text-center" data-testid={`row-${s.id}-ca-${i + 1}`}>{v}</td>
+                        ))
+                      : caWeights.map((_, i) => (
+                          i === 0
+                            ? <td key={i} className="p-2 text-center italic text-slate-600" title="Legacy aggregated CA" data-testid={`row-${s.id}-ca-legacy`}>{s.ca_score}<sup>*</sup></td>
+                            : <td key={i} className="p-2 text-center text-slate-400">—</td>
+                        ))
+                  ) : (
+                    <td className="p-2 text-center" data-testid={`row-${s.id}-ca-total`}>{s.ca_score}</td>
+                  )}
+                  <td className="p-2 text-center">{s.exam_score}</td>
+                  <td className="p-2 text-center font-semibold">{s.total}</td>
+                  <td className="p-2 text-center font-bold" style={{ color: brand }}>{s.grade}</td>
+                  <td className="p-2 text-xs text-slate-600">{remarkForGrade(s.grade)}</td>
+                </tr>
+              );
+            })}
+            {!scores.length && <tr><td className="p-3 text-center text-slate-400" colSpan={totalCols}>No scores recorded for this term yet.</td></tr>}
           </tbody>
         </table>
+        {hasLegacyRow && (
+          <div className="mt-1 text-[11px] text-slate-500 italic" data-testid="legacy-ca-footnote">
+            <sup>*</sup> Legacy record stored as a single aggregated CA value (per-column breakdown not available).
+          </div>
+        )}
 
         <div className="mt-4 grid grid-cols-2 gap-4 text-sm">
           <div className="p-3 rounded border-2" style={{ borderColor: brand }}><div className="text-xs text-slate-500">Average</div><div className="font-display text-xl font-bold" style={{ color: brand }}>{average}%</div></div>
