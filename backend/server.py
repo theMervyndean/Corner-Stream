@@ -92,6 +92,7 @@ from routers.users import router as users_router  # noqa: E402
 from routers.analytics import router as analytics_router  # noqa: E402
 from routers.templates import router as templates_router  # noqa: E402
 from routers.audit import router as audit_router  # noqa: E402
+from routers.messages import router as messages_router  # noqa: E402
 api_router.include_router(subjects_router)
 api_router.include_router(cbt_router)
 api_router.include_router(cbt_review_router)
@@ -99,6 +100,7 @@ api_router.include_router(users_router)
 api_router.include_router(analytics_router)
 api_router.include_router(templates_router)
 api_router.include_router(audit_router)
+api_router.include_router(messages_router)
 
 app.include_router(api_router)
 

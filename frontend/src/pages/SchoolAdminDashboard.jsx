@@ -1306,10 +1306,10 @@ export default function SchoolAdminDashboard() {
                     <Button
                       disabled={!price}
                       onClick={() => { if (price) { setBankForm((f) => ({ ...f, tier: k, duration: dur, amount_ngn: price })); setBankDlg(true); } }}
-                      className={`mt-5 rounded-full ${price ? "cs-bg-green text-white hover:opacity-90" : "bg-slate-200 text-slate-400 cursor-not-allowed hover:bg-slate-200"}`}
+                      className={`mt-5 rounded-full text-xs sm:text-sm font-semibold whitespace-nowrap px-3 sm:px-4 ${price ? "cs-bg-green text-white hover:opacity-90" : "bg-slate-200 text-slate-400 cursor-not-allowed hover:bg-slate-200"}`}
                       data-testid={`subscribe-btn-${k}`}
                     >
-                      {price ? <>Pay by bank transfer <ArrowRight size={16} className="ml-2" /></> : "Not available"}
+                      {price ? <>Pay by bank transfer <ArrowRight size={14} className="ml-1.5" /></> : "Not available"}
                     </Button>
                   </div>
                 );
@@ -1538,16 +1538,36 @@ export default function SchoolAdminDashboard() {
       </Dialog>
 
       {/* Passport upload dialog */}
-      <Dialog open={!!passportDlg} onOpenChange={(o) => !o && setPassportDlg(null)}>
+      <Dialog open={!!passportDlg} onOpenChange={(o) => !o && (setPassportDlg(null), setPassportPreview(null))}>
         <DialogContent>
           <DialogHeader><DialogTitle>Passport — {passportDlg?.name}</DialogTitle></DialogHeader>
           <div className="space-y-3">
-            <div className="aspect-[3/4] w-40 mx-auto border rounded overflow-hidden bg-slate-100 flex items-center justify-center">
-              {passportDlg?.passport_url ? <img src={passportDlg.passport_url} alt="" className="w-full h-full object-cover" /> : <div className="text-xs text-slate-400">NO PHOTO</div>}
+            <div className="aspect-[3/4] w-40 mx-auto border rounded overflow-hidden bg-slate-100 flex items-center justify-center" data-testid="passport-preview-box">
+              {passportPreview
+                ? <img src={passportPreview} alt="preview" className="w-full h-full object-cover" />
+                : passportDlg?.passport_url
+                  ? <img src={passportDlg.passport_url} alt="" className="w-full h-full object-cover" />
+                  : <div className="text-xs text-slate-400">NO PHOTO</div>}
             </div>
             <Label>Upload new passport</Label>
             <Input type="file" accept="image/*" onChange={(e) => onPassportFile(passportDlg, e)} data-testid="passport-input" />
+            {passportPreview && (
+              <p className="text-[11px] text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-2 py-1" data-testid="passport-preview-hint">
+                Preview ready — click <strong>Confirm &amp; Save Passport</strong> to write it to the student record.
+              </p>
+            )}
           </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setPassportDlg(null); setPassportPreview(null); }} data-testid="passport-cancel">Cancel</Button>
+            <Button
+              onClick={savePassport}
+              disabled={!passportPreview}
+              className="cs-bg-green text-white hover:opacity-90 btn-anim"
+              data-testid="passport-save"
+            >
+              Confirm &amp; Save Passport
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
       {/* New user (teacher / parent) dialog */}

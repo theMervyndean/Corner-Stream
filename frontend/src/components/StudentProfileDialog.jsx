@@ -2,12 +2,16 @@ import React, { useEffect, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { api, formatApiError } from "@/lib/api";
 import { toast } from "sonner";
 import {
   User, KeyRound, Eye, RotateCcw, GraduationCap, CreditCard, FileText, X,
-  Mail, Phone, Calendar, UserCircle2, Copy,
+  Mail, Phone, Calendar, UserCircle2, Copy, ImagePlus, CheckCircle2,
 } from "lucide-react";
+
+const MAX_PASSPORT_BYTES = 500 * 1024; // keep parity with the admin dashboard limit
 
 /**
  * Detail view for a student. Shown when admin clicks a student row.
@@ -18,10 +22,14 @@ export default function StudentProfileDialog({ open, onOpenChange, student, onCh
   const [loginUser, setLoginUser] = useState(null);
   const [scores, setScores] = useState({});
   const [revealedPw, setRevealedPw] = useState(null);
+  // Passport upload (Confirm & Save Passport button feeds /students/{id}/passport)
+  const [passportPreview, setPassportPreview] = useState(null);
+  const [savingPassport, setSavingPassport] = useState(false);
 
   useEffect(() => {
     if (!open || !student) {
       setLoginUser(null); setScores({}); setRevealedPw(null);
+      setPassportPreview(null); setSavingPassport(false);
       return;
     }
     (async () => {
@@ -65,6 +73,42 @@ export default function StudentProfileDialog({ open, onOpenChange, student, onCh
     try { await navigator.clipboard.writeText(text); toast.success(`${label} copied`); } catch { toast.error("Copy failed"); }
   };
 
+  // ─── Passport upload + explicit confirm save ───
+  const onPassportFile = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      toast.error("Only image files are accepted");
+      e.target.value = "";
+      return;
+    }
+    if (file.size > MAX_PASSPORT_BYTES) {
+      toast.error(`Image too large — max 500 KB. Yours is ${(file.size / 1024).toFixed(0)} KB.`);
+      e.target.value = "";
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      setPassportPreview(reader.result);
+      toast.success(`Preview ready — click Confirm & Save to write it.`);
+    };
+    reader.readAsDataURL(file);
+  };
+  const savePassport = async () => {
+    if (!student?.id || !passportPreview) return;
+    setSavingPassport(true);
+    try {
+      await api.put(`/students/${student.id}/passport`, { passport_url: passportPreview });
+      toast.success(`Passport saved for ${student.name}`);
+      setPassportPreview(null);
+      onChanged && onChanged();
+    } catch (err) {
+      toast.error(formatApiError(err.response?.data?.detail) || err.message);
+    } finally {
+      setSavingPassport(false);
+    }
+  };
+
   const allTerms = ["1st Term", "2nd Term", "3rd Term"];
 
   return (
@@ -78,10 +122,12 @@ export default function StudentProfileDialog({ open, onOpenChange, student, onCh
 
         {/* Header card with passport */}
         <div className="flex gap-4 p-4 rounded-xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white">
-          <div className="w-24 h-32 rounded-lg overflow-hidden bg-slate-100 border border-slate-200 shrink-0">
-            {student.passport_url
-              ? <img src={student.passport_url} alt="" className="w-full h-full object-cover" />
-              : <div className="w-full h-full flex items-center justify-center text-slate-400"><User size={32} /></div>}
+          <div className="w-24 h-32 rounded-lg overflow-hidden bg-slate-100 border border-slate-200 shrink-0" data-testid="profile-passport-box">
+            {passportPreview
+              ? <img src={passportPreview} alt="preview" className="w-full h-full object-cover" />
+              : student.passport_url
+                ? <img src={student.passport_url} alt="" className="w-full h-full object-cover" />
+                : <div className="w-full h-full flex items-center justify-center text-slate-400"><User size={32} /></div>}
           </div>
           <div className="flex-1">
             <h3 className="font-display font-bold text-xl cs-text-navy">{student.name}</h3>
@@ -93,6 +139,36 @@ export default function StudentProfileDialog({ open, onOpenChange, student, onCh
               {loginUser
                 ? <Badge variant="outline" className="cs-text-blue border-blue-300">Login active</Badge>
                 : <Badge variant="outline" className="text-amber-700 border-amber-300">No login</Badge>}
+            </div>
+
+            {/* Passport upload + explicit confirm-save */}
+            <div className="mt-3 rounded-lg border border-slate-200 bg-white p-3" data-testid="profile-passport-upload">
+              <Label className="text-[11px] uppercase tracking-wider text-slate-500 flex items-center gap-1">
+                <ImagePlus size={12} /> Update passport photo
+              </Label>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <Input
+                  type="file"
+                  accept="image/*"
+                  onChange={onPassportFile}
+                  className="max-w-[260px] text-xs"
+                  data-testid="profile-passport-input"
+                />
+                <Button
+                  size="sm"
+                  onClick={savePassport}
+                  disabled={!passportPreview || savingPassport}
+                  className="cs-bg-green text-white hover:opacity-90 btn-anim text-xs"
+                  data-testid="profile-passport-save"
+                >
+                  <CheckCircle2 size={14} className="mr-1" /> {savingPassport ? "Saving…" : "Confirm & Save Passport"}
+                </Button>
+              </div>
+              {passportPreview && (
+                <p className="text-[11px] text-emerald-700 mt-2">
+                  Preview ready — click <strong>Confirm &amp; Save Passport</strong> to write it to the student record.
+                </p>
+              )}
             </div>
           </div>
         </div>
