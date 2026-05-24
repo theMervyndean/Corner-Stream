@@ -18,6 +18,7 @@ import {
   Save, Plus, Trash2, Eye, Image as ImageIcon, X as XIcon, FileSpreadsheet, Users,
   Menu, ChevronRight, LogOut, BadgeCheck, LayoutDashboard, ClipboardList, FileBarChart,
   BookOpen, GraduationCap, Lock, User, Upload, Download,
+  Mail, Send, Paperclip, MessageSquare,
 } from "lucide-react";
 import BulkUploadDialog from "@/components/BulkUploadDialog.jsx";
 import * as XLSX from "xlsx";
@@ -99,6 +100,67 @@ export default function TeacherDashboard() {
   const [bulkFile, setBulkFile] = useState(null);
   const [bulkParsed, setBulkParsed] = useState(null); // { rows, count } | null
   const [bulkBusy, setBulkBusy] = useState(false);
+
+  // ─── Communication Hub — Messages & Materials (Teacher MVP, local-only) ───
+  const [messages, setMessages] = useState([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [msgsLoading, setMsgsLoading] = useState(false);
+  const [composeForm, setComposeForm] = useState({
+    message_type: "announcement",
+    target_role: "all",
+    target_class: "__none__",
+    content: "",
+    attachment_url: "",
+  });
+  const [sendingMsg, setSendingMsg] = useState(false);
+
+  const loadMessages = async () => {
+    setMsgsLoading(true);
+    try {
+      const { data } = await api.get("/messages/my-stream");
+      setMessages(Array.isArray(data?.messages) ? data.messages : []);
+      setUnreadCount(Number(data?.unread_count) || 0);
+    } catch (e) {
+      toast.error(formatApiError(e.response?.data?.detail) || e.message);
+    } finally {
+      setMsgsLoading(false);
+    }
+  };
+
+  // Only load when the Messages tab is actually opened — never on Overview render.
+  useEffect(() => {
+    if (tab === "messages") loadMessages();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab]);
+
+  const openMessage = async (m) => {
+    if (m?.unread) {
+      try { await api.post(`/messages/${m.id}/read`); } catch { /* silent */ }
+      loadMessages();
+    }
+  };
+
+  const sendMessage = async () => {
+    const body = composeForm.content.trim();
+    if (!body) { toast.error("Content is required"); return; }
+    setSendingMsg(true);
+    try {
+      await api.post("/messages", {
+        message_type: composeForm.message_type,
+        target_role: composeForm.target_role,
+        target_class: composeForm.target_class === "__none__" ? null : composeForm.target_class,
+        content: body,
+        attachment_url: composeForm.attachment_url.trim() || null,
+      });
+      toast.success("Sent");
+      setComposeForm((f) => ({ ...f, content: "", attachment_url: "" }));
+      loadMessages();
+    } catch (e) {
+      toast.error(formatApiError(e.response?.data?.detail) || e.message);
+    } finally {
+      setSendingMsg(false);
+    }
+  };
 
   const allowTrueFalse = (school?.school_type === "primary" || school?.school_type === "mixed");
 
@@ -449,6 +511,7 @@ export default function TeacherDashboard() {
     { k: "scores", l: "Scores Panel", I: ClipboardList, locked: !canSeeScores },
     { k: "cbt", l: "CBT Results", I: FileBarChart, locked: !canSeeCBT },
     ...(isClassTeacher ? [{ k: "reports", l: "My Class Reports", I: GraduationCap, locked: !canSeeClassReports }] : []),
+    { k: "messages", l: "Messages & Materials", I: Mail, locked: false, badge: unreadCount },
     { k: "profile", l: "Profile & Assignments", I: User, locked: false },
   ];
   const currentLabel = NAV.find((n) => n.k === tab)?.l || "Dashboard";
@@ -481,6 +544,11 @@ export default function TeacherDashboard() {
             >
               <Icon size={15} className="flex-shrink-0" />
               <span className="hidden lg:inline truncate flex-1 text-left">{n.l}</span>
+              {n.badge > 0 && (
+                <span className="hidden lg:inline-flex items-center justify-center bg-red-500 text-white text-[10px] font-bold rounded-full px-1.5 min-w-[18px] h-[18px]" data-testid={`teacher-nav-${n.k}-badge`}>
+                  {n.badge > 99 ? "99+" : `+${n.badge}`}
+                </span>
+              )}
               {n.locked && <Lock size={11} className={`flex-shrink-0 ${active ? "text-slate-500" : "text-white/55"}`} data-testid={`teacher-nav-${n.k}-lock`} />}
               {active && !n.locked && <ChevronRight size={12} className="hidden lg:inline" />}
             </button>
@@ -569,6 +637,7 @@ export default function TeacherDashboard() {
               <TabsTrigger value="scores">Scores</TabsTrigger>
               <TabsTrigger value="cbt">CBT</TabsTrigger>
               {isClassTeacher && <TabsTrigger value="reports">Reports</TabsTrigger>}
+              <TabsTrigger value="messages">Messages</TabsTrigger>
               <TabsTrigger value="profile">Profile</TabsTrigger>
             </TabsList>
 
@@ -904,6 +973,146 @@ export default function TeacherDashboard() {
                 )}
               </TabsContent>
             )}
+
+            {/* ---------------- MESSAGES & MATERIALS (Teacher MVP, local-only) ---------------- */}
+            <TabsContent value="messages" className="cs-pane-fade">
+              <div className="grid lg:grid-cols-2 gap-6">
+                {/* Composer card */}
+                <div className="cs-card p-6" data-testid="teacher-messages-composer">
+                  <div className="flex items-start gap-3 mb-4">
+                    <div className="w-11 h-11 rounded-lg cs-bg-navy text-white flex items-center justify-center flex-shrink-0"><Send size={18} /></div>
+                    <div className="flex-1">
+                      <h3 className="font-display font-semibold cs-text-navy text-lg">Compose</h3>
+                      <p className="text-sm text-slate-500 mt-1">Send an announcement, assignment or learning material to your class stream.</p>
+                    </div>
+                  </div>
+
+                  <div className="grid sm:grid-cols-2 gap-3">
+                    <div>
+                      <Label className="text-xs">Message type</Label>
+                      <Select value={composeForm.message_type} onValueChange={(v) => setComposeForm((f) => ({ ...f, message_type: v }))}>
+                        <SelectTrigger data-testid="msg-type"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="announcement">Announcement</SelectItem>
+                          <SelectItem value="assignment">Assignment</SelectItem>
+                          <SelectItem value="material">Material</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label className="text-xs">Target audience</Label>
+                      <Select value={composeForm.target_role} onValueChange={(v) => setComposeForm((f) => ({ ...f, target_role: v }))}>
+                        <SelectTrigger data-testid="msg-target-role"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">Everyone in class</SelectItem>
+                          <SelectItem value="students">Students</SelectItem>
+                          <SelectItem value="parents">Parents</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
+                  <div className="mt-3">
+                    <Label className="text-xs">Target class (optional)</Label>
+                    <Select value={composeForm.target_class} onValueChange={(v) => setComposeForm((f) => ({ ...f, target_class: v }))}>
+                      <SelectTrigger data-testid="msg-target-class"><SelectValue placeholder="No specific class" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">No specific class</SelectItem>
+                        {myClasses.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="mt-3">
+                    <Label className="text-xs">Content</Label>
+                    <Textarea
+                      rows={4}
+                      placeholder="Write your message…"
+                      value={composeForm.content}
+                      onChange={(e) => setComposeForm((f) => ({ ...f, content: e.target.value }))}
+                      data-testid="msg-content"
+                    />
+                  </div>
+
+                  <div className="mt-3">
+                    <Label className="text-xs flex items-center gap-1"><Paperclip size={12} /> Attachment URL (optional)</Label>
+                    <Input
+                      placeholder="https://drive.google.com/…"
+                      value={composeForm.attachment_url}
+                      onChange={(e) => setComposeForm((f) => ({ ...f, attachment_url: e.target.value }))}
+                      data-testid="msg-attachment"
+                    />
+                    <p className="text-[11px] text-slate-500 mt-1">Maximum file upload size supported: 25MB</p>
+                  </div>
+
+                  <Button
+                    onClick={sendMessage}
+                    disabled={sendingMsg || !composeForm.content.trim()}
+                    className="cs-bg-green text-white hover:opacity-90 w-full mt-4 rounded-full btn-anim"
+                    data-testid="msg-send"
+                  >
+                    <Send size={14} className="mr-2" /> {sendingMsg ? "Sending…" : "Send message"}
+                  </Button>
+                </div>
+
+                {/* Stream card */}
+                <div className="cs-card p-6" data-testid="teacher-messages-stream">
+                  <div className="flex items-start gap-3 mb-4">
+                    <div className="w-11 h-11 rounded-lg cs-bg-blue text-white flex items-center justify-center flex-shrink-0"><MessageSquare size={18} /></div>
+                    <div className="flex-1">
+                      <h3 className="font-display font-semibold cs-text-navy text-lg">My stream</h3>
+                      <p className="text-sm text-slate-500 mt-1" data-testid="msg-stream-summary">
+                        <span className="font-semibold cs-text-navy">{unreadCount}</span> unread · <span className="font-semibold">{messages.length}</span> total
+                      </p>
+                    </div>
+                    <Button size="sm" variant="outline" onClick={loadMessages} disabled={msgsLoading} data-testid="msg-refresh">
+                      {msgsLoading ? "Refreshing…" : "Refresh"}
+                    </Button>
+                  </div>
+
+                  <div className="space-y-2 max-h-[520px] overflow-y-auto pr-1" data-testid="msg-list">
+                    {messages.length === 0 ? (
+                      <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50/60 p-8 text-center text-sm text-slate-500" data-testid="msg-empty">
+                        {msgsLoading ? "Loading…" : "No messages yet. Use the composer to send your first one."}
+                      </div>
+                    ) : messages.map((m) => (
+                      <button
+                        key={m.id}
+                        onClick={() => openMessage(m)}
+                        className={`w-full text-left rounded-lg border p-3 transition-colors ${m.unread ? "bg-emerald-50/50 border-emerald-200 hover:bg-emerald-50" : "bg-white border-slate-200 hover:bg-slate-50"}`}
+                        data-testid={`msg-row-${m.id}`}
+                      >
+                        <div className="flex items-start gap-2">
+                          {m.unread && <span className="mt-1.5 w-2 h-2 rounded-full bg-red-500 flex-shrink-0" data-testid={`msg-unread-dot-${m.id}`} />}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex flex-wrap items-center gap-1.5 mb-1">
+                              <Badge className={
+                                m.message_type === "assignment" ? "cs-bg-blue text-white" :
+                                m.message_type === "material" ? "cs-bg-green text-white" :
+                                "cs-bg-navy text-white"
+                              }>{m.message_type}</Badge>
+                              <span className="text-[11px] text-slate-500">
+                                {m.target_role === "all" ? "Everyone" : m.target_role}
+                                {m.target_class ? ` · ${m.target_class}` : ""}
+                              </span>
+                            </div>
+                            <div className="text-sm cs-text-navy line-clamp-3">{m.content}</div>
+                            <div className="flex flex-wrap items-center gap-3 mt-2 text-[11px] text-slate-500">
+                              {m.attachment_url && (
+                                <a href={m.attachment_url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="inline-flex items-center gap-1 cs-text-blue hover:underline" data-testid={`msg-attachment-${m.id}`}>
+                                  <Paperclip size={11} /> Attachment
+                                </a>
+                              )}
+                              <span>{m.created_at ? new Date(m.created_at).toLocaleString() : ""}</span>
+                            </div>
+                          </div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </TabsContent>
 
             {/* ---------------- PROFILE & ASSIGNMENTS (5b) ---------------- */}
             <TabsContent value="profile" className="cs-pane-fade">
