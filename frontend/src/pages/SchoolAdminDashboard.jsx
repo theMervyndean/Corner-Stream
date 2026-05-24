@@ -30,10 +30,30 @@ import LockedOverlay from "@/components/LockedOverlay.jsx";
 import DigitalReportsDashboard from "@/pages/DigitalReportsDashboard.jsx";
 
 const PRICING = {
-  cbt_essentials: { name: "CBT Essentials", "1_term": 40000, "2_terms": 70000, "full_session": 110000 },
-  digital_reports: { name: "Digital Reports", "1_term": 50000, "2_terms": 90000, "full_session": 140000 },
-  financial_ledger: { name: "Financial Ledger", "1_term": 40000, "2_terms": 70000, "full_session": 110000 },
-  unified_enterprise: { name: "Unified Enterprise", full_session: 200000 },
+  cbt_essentials: {
+    name: "CBT Essentials",
+    "1_term": 40000, "2_terms": 70000, "full_session": 110000,
+    blurb: "Run computer-based exams with auto-graded MCQ + True/False, attempt analytics and exam history.",
+    features: ["CBT exam builder", "MCQ + True/False", "Auto-grading & attempts log", "Class-level publishing"],
+  },
+  digital_reports: {
+    name: "Digital Reports",
+    "1_term": 50000, "2_terms": 90000, "full_session": 140000,
+    blurb: "Per-term digital report cards with QR verification, annual cumulative averaging and broadsheets.",
+    features: ["Termly report cards", "Annual cumulative report", "QR-verified PDFs", "Per-column CA scoring"],
+  },
+  financial_ledger: {
+    name: "Financial Ledger",
+    "1_term": 40000, "2_terms": 70000, "full_session": 110000,
+    blurb: "Fee tracking, debt-lock controls and parent visibility on outstanding balances.",
+    features: ["Per-student fee balance", "Debt-lock on results", "Bursary dashboard", "Parent fee visibility"],
+  },
+  unified_enterprise: {
+    name: "Unified Enterprise",
+    full_session: 200000,
+    blurb: "Everything in CBT, Digital Reports and Financial Ledger — bundled at the lowest per-student cost.",
+    features: ["All CBT features", "All Digital Reports", "All Financial Ledger", "Priority support"],
+  },
 };
 const DURS = [{ k: "1_term", l: "1 Term" }, { k: "2_terms", l: "2 Terms" }, { k: "full_session", l: "Full Session" }];
 
@@ -1482,13 +1502,28 @@ export default function SchoolAdminDashboard() {
                 return (
                   <div key={k} className={`cs-card p-6 flex flex-col ${featured ? "tier-featured" : ""}`} data-testid={`subscribe-card-${k}`}>
                     <h3 className="font-display font-bold cs-text-navy text-lg">{t.name}</h3>
+                    {featured && <span className="inline-block mt-1 text-[10px] uppercase tracking-wider font-bold cs-text-green">★ Most popular</span>}
+                    {t.blurb && <p className="text-xs text-slate-500 mt-2 leading-relaxed">{t.blurb}</p>}
                     <div className="mt-4">
                       {price ? (
-                        <div className="font-display text-3xl font-extrabold cs-text-navy">₦{price.toLocaleString()}</div>
+                        <>
+                          <div className="font-display text-3xl font-extrabold cs-text-navy">₦{price.toLocaleString()}</div>
+                          <div className="text-[11px] text-slate-500 uppercase tracking-wider mt-1">per school · {DURS.find((d) => d.k === duration)?.l || duration}</div>
+                        </>
                       ) : (
                         <div className="text-sm text-slate-400 italic">Full Session only</div>
                       )}
                     </div>
+                    {Array.isArray(t.features) && t.features.length > 0 && (
+                      <ul className="mt-4 space-y-1.5" data-testid={`subscribe-features-${k}`}>
+                        {t.features.map((f) => (
+                          <li key={f} className="flex items-start gap-2 text-xs text-slate-700">
+                            <CheckCircle2 size={13} className="cs-text-green flex-shrink-0 mt-0.5" />
+                            <span>{f}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
                     <Button
                       disabled={!price}
                       onClick={() => { if (price) { setBankForm((f) => ({ ...f, tier: k, duration: dur, amount_ngn: price })); setBankDlg(true); } }}
