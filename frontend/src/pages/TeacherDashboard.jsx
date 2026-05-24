@@ -321,31 +321,56 @@ export default function TeacherDashboard() {
   };
 
   // ─── Bulk score-sheet handlers (5b layout — wires to existing /scores/batch) ───
+  // Builds Excel headers with dynamic CA columns sourced from school.ca_weights
+  // and a computed Total Score formula = SUM(CA cols) + Exam.
   const downloadBulkTemplate = () => {
     const cls = bulkClass || (myClasses[0] || "JSS 1");
     const subjs = mySubjects.length ? mySubjects : ["Subject A"];
-    // Roster of students in the chosen class (from already-loaded data)
     const roster = students.filter((s) => s.class_name === cls);
-    const rows = [];
-    (roster.length ? roster : [{ id: "<student_id>", name: "<student name>" }]).forEach((st) => {
+    const caCount = caWeights.length;
+
+    // Header row — dynamic CA columns
+    const caHeaders = caWeights.map((w, i) => `CA ${i + 1} (max ${w})`);
+    const header = [
+      "student_id", "student_name", "class_name", "subject", "term", "year",
+      ...caHeaders, `Exam (max ${examMaxCfg})`, "Total Score",
+    ];
+
+    // Data rows — empty score cells; Total uses a SUM formula referencing CA cols + Exam
+    // Cell A=student_id ... F=year. CA cols start at column G (index 6).
+    const aoa = [header];
+    const dataRows = roster.length ? roster : [{ id: "<student_id>", name: "<student name>" }];
+    let rowIdx = 2; // first data row in spreadsheet (1-based after header)
+    dataRows.forEach((st) => {
       subjs.forEach((subj) => {
-        rows.push({
-          student_id: st.id,
-          student_name: st.name,
-          class_name: cls,
-          subject: subj,
-          term: bulkTerm,
-          year: bulkYear,
-          ca_score: "",
-          exam_score: "",
-        });
+        const caStartCol = 6; // 0-based index of first CA column
+        const caEndCol = caStartCol + caCount - 1;
+        const examCol = caEndCol + 1;
+        const caStartLetter = XLSX.utils.encode_col(caStartCol);
+        const caEndLetter = XLSX.utils.encode_col(caEndCol);
+        const examLetter = XLSX.utils.encode_col(examCol);
+        const totalFormula = { f: `SUM(${caStartLetter}${rowIdx}:${caEndLetter}${rowIdx})+${examLetter}${rowIdx}` };
+        const row = [
+          st.id, st.name, cls, subj, bulkTerm, bulkYear,
+          ...caWeights.map(() => ""),
+          "",
+          totalFormula,
+        ];
+        aoa.push(row);
+        rowIdx += 1;
       });
     });
-    const ws = XLSX.utils.json_to_sheet(rows);
+
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    // Column widths for readability
+    ws["!cols"] = [
+      { wch: 38 }, { wch: 22 }, { wch: 12 }, { wch: 22 }, { wch: 10 }, { wch: 12 },
+      ...caWeights.map(() => ({ wch: 12 })), { wch: 12 }, { wch: 14 },
+    ];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Scores");
     XLSX.writeFile(wb, `score-sheet-${cls.replace(/\s+/g, "_")}-${bulkTerm.replace(/\s+/g, "_")}.xlsx`);
-    toast.success("Template downloaded");
+    toast.success(`Template downloaded · ${caCount} CA column${caCount === 1 ? "" : "s"} + Exam + Total`);
   };
 
   const onBulkFile = async (file) => {
@@ -364,20 +389,48 @@ export default function TeacherDashboard() {
     }
   };
 
+  // Reads "CA 1", "CA 2", ... "CA N" columns losslessly into ca_scores[] and
+  // sends BOTH ca_scores (lossless) AND ca_score (sum) so the backend can
+  // validate per-column caps while staying backward-compatible.
   const submitBulkScores = async () => {
     if (!bulkParsed || !bulkParsed.rows.length) { toast.error("No rows to upload"); return; }
     setBulkBusy(true);
     try {
+      const caCount = caWeights.length;
       const items = bulkParsed.rows
         .filter((r) => r.student_id && r.subject)
-        .map((r) => ({
-          student_id: String(r.student_id).trim(),
-          term: String(r.term || bulkTerm).trim(),
-          year: String(r.year || bulkYear).trim(),
-          subject: String(r.subject).trim(),
-          ca_score: Number(r.ca_score) || 0,
-          exam_score: Number(r.exam_score) || 0,
-        }));
+        .map((r) => {
+          // Tolerate "CA 1", "CA 1 (max 5)", "CA1", "ca_1" header variants
+          const findCaValue = (idx) => {
+            const want = idx + 1;
+            for (const key of Object.keys(r)) {
+              const m = String(key).match(/CA\s*0*(\d+)/i);
+              if (m && Number(m[1]) === want) return r[key];
+            }
+            return "";
+          };
+          const findExamValue = () => {
+            for (const key of Object.keys(r)) {
+              if (/^exam\b/i.test(String(key).trim())) return r[key];
+            }
+            return r.exam_score ?? r.Exam ?? "";
+          };
+          const ca_scores = Array.from({ length: caCount }, (_, i) => {
+            const v = findCaValue(i);
+            const n = Number(v);
+            return Number.isFinite(n) ? n : 0;
+          });
+          const exam_score = Number(findExamValue()) || 0;
+          return {
+            student_id: String(r.student_id).trim(),
+            term: String(r.term || bulkTerm).trim(),
+            year: String(r.year || bulkYear).trim(),
+            subject: String(r.subject).trim(),
+            ca_scores,
+            ca_score: ca_scores.reduce((a, b) => a + b, 0),
+            exam_score,
+          };
+        });
       if (!items.length) { toast.error("No valid rows (need student_id + subject)"); return; }
       const { data } = await api.post("/scores/batch", { items });
       toast.success(`Uploaded ${(data?.saved || []).length} of ${items.length} rows`);
@@ -915,44 +968,13 @@ export default function TeacherDashboard() {
                     <div className="flex-1">
                       <h3 className="font-display font-semibold cs-text-navy text-lg">Bulk score-sheet upload</h3>
                       <p className="text-sm text-slate-500 mt-1">
-                        Upload a filled Excel template to push CA & exam scores to the gradebook in bulk.
+                        Download a template pre-built for your school's marking scheme ({caWeights.length} CA column{caWeights.length === 1 ? "" : "s"} + Exam + Total). Fill it in Excel, then upload to push CA & exam scores to the gradebook in bulk.
                       </p>
                     </div>
                   </div>
 
-                  <div className="mt-4 grid sm:grid-cols-3 gap-3">
-                    <div>
-                      <Label className="text-xs">Class</Label>
-                      <Select value={bulkClass} onValueChange={setBulkClass}>
-                        <SelectTrigger data-testid="bulk-class"><SelectValue placeholder="Pick class" /></SelectTrigger>
-                        <SelectContent>{myClasses.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
-                      </Select>
-                    </div>
-                    <div>
-                      <Label className="text-xs">Term</Label>
-                      <Select value={bulkTerm} onValueChange={setBulkTerm}>
-                        <SelectTrigger data-testid="bulk-term"><SelectValue /></SelectTrigger>
-                        <SelectContent>{TERMS.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
-                      </Select>
-                    </div>
-                    <div>
-                      <Label className="text-xs">Year</Label>
-                      <Input value={bulkYear} onChange={(e) => setBulkYear(e.target.value)} data-testid="bulk-year" />
-                    </div>
-                  </div>
-
-                  <Button
-                    onClick={downloadBulkTemplate}
-                    variant="outline"
-                    className="w-full mt-3"
-                    data-testid="bulk-template-download"
-                    disabled={!bulkClass && myClasses.length === 0}
-                  >
-                    <Download size={14} className="mr-2" /> Download template (.xlsx)
-                  </Button>
-
                   <label
-                    className="mt-4 block rounded-lg border-2 border-dashed border-slate-300 hover:border-slate-400 bg-slate-50/60 p-6 text-center cursor-pointer transition-colors"
+                    className="mt-5 block rounded-lg border-2 border-dashed border-slate-300 hover:border-slate-400 bg-slate-50/60 p-6 text-center cursor-pointer transition-colors"
                     data-testid="bulk-drop-zone"
                   >
                     <Upload size={22} className="mx-auto text-slate-400" />
@@ -960,7 +982,7 @@ export default function TeacherDashboard() {
                       {bulkFile ? bulkFile.name : "Click to choose an Excel file"}
                     </div>
                     <div className="text-xs text-slate-500 mt-1">
-                      .xlsx · columns: student_id · subject · term · year · ca_score · exam_score
+                      .xlsx · headers: student_id · subject · term · year · CA 1…CA {caWeights.length} · Exam · Total Score
                     </div>
                     <input
                       type="file"
@@ -977,14 +999,49 @@ export default function TeacherDashboard() {
                     </div>
                   )}
 
-                  <Button
-                    onClick={submitBulkScores}
-                    disabled={!bulkParsed || bulkBusy}
-                    className="cs-bg-navy text-white hover:opacity-90 w-full mt-3 rounded-full btn-anim"
-                    data-testid="bulk-submit"
-                  >
-                    {bulkBusy ? "Uploading…" : "Validate & upload"}
-                  </Button>
+                  {/* All controls + actions live in one grouped section */}
+                  <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50/60 p-4">
+                    <div className="grid sm:grid-cols-3 gap-3">
+                      <div>
+                        <Label className="text-xs">Class</Label>
+                        <Select value={bulkClass} onValueChange={setBulkClass}>
+                          <SelectTrigger data-testid="bulk-class"><SelectValue placeholder="Pick class" /></SelectTrigger>
+                          <SelectContent>{myClasses.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <Label className="text-xs">Term</Label>
+                        <Select value={bulkTerm} onValueChange={setBulkTerm}>
+                          <SelectTrigger data-testid="bulk-term"><SelectValue /></SelectTrigger>
+                          <SelectContent>{TERMS.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <Label className="text-xs">Year</Label>
+                        <Input value={bulkYear} onChange={(e) => setBulkYear(e.target.value)} data-testid="bulk-year" />
+                      </div>
+                    </div>
+
+                    <div className="grid sm:grid-cols-2 gap-2 mt-3">
+                      <Button
+                        onClick={downloadBulkTemplate}
+                        variant="outline"
+                        className="w-full"
+                        data-testid="bulk-template-download"
+                        disabled={!bulkClass && myClasses.length === 0}
+                      >
+                        <Download size={14} className="mr-2" /> Download template
+                      </Button>
+                      <Button
+                        onClick={submitBulkScores}
+                        disabled={!bulkParsed || bulkBusy}
+                        className="cs-bg-navy text-white hover:opacity-90 w-full rounded-md btn-anim"
+                        data-testid="bulk-submit"
+                      >
+                        {bulkBusy ? "Uploading…" : "Validate & upload"}
+                      </Button>
+                    </div>
+                  </div>
                 </div>
                 )}
               </div>
