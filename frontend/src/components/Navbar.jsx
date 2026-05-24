@@ -90,7 +90,7 @@ export default function Navbar({ variant = "landing" }) {
                     <ChevronDown size={14} />
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" sideOffset={6} collisionPadding={8} className="w-56">
+                <DropdownMenuContent align="end" className="w-56">
                   <DropdownMenuLabel>
                     <div className="font-medium cs-text-navy">{user.name}</div>
                     <div className="text-[11px] text-slate-500 font-normal">{ROLE_LABEL[user.role] || user.role}</div>

@@ -1492,10 +1492,10 @@ export default function SchoolAdminDashboard() {
                     <Button
                       disabled={!price}
                       onClick={() => { if (price) { setBankForm((f) => ({ ...f, tier: k, duration: dur, amount_ngn: price })); setBankDlg(true); } }}
-                      className={`mt-5 rounded-full text-xs sm:text-sm font-semibold whitespace-nowrap px-3 sm:px-4 ${price ? "cs-bg-green text-white hover:opacity-90" : "bg-slate-200 text-slate-400 cursor-not-allowed hover:bg-slate-200"}`}
+                      className={`mt-5 rounded-full text-[11px] sm:text-xs font-semibold whitespace-nowrap px-2.5 sm:px-3 py-1.5 h-auto leading-tight ${price ? "cs-bg-green text-white hover:opacity-90" : "bg-slate-200 text-slate-400 cursor-not-allowed hover:bg-slate-200"}`}
                       data-testid={`subscribe-btn-${k}`}
                     >
-                      {price ? <>Pay by bank transfer <ArrowRight size={14} className="ml-1.5" /></> : "Not available"}
+                      {price ? <>Pay by bank transfer <ArrowRight size={12} className="ml-1" /></> : "Not available"}
                     </Button>
                   </div>
                 );
