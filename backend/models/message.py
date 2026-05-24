@@ -10,7 +10,7 @@ import uuid
 
 
 # ─── Domain enums (string literals so the JSON contract stays simple) ────────
-TargetRole = Literal["all", "teachers", "students", "parents"]
+TargetRole = Literal["all", "teachers", "students", "parents", "admin"]
 MessageType = Literal["announcement", "assignment", "material"]
 SenderRole = Literal["super_admin", "school_admin", "teacher", "parent", "student"]
 
@@ -30,6 +30,13 @@ class MessageIn(BaseModel):
         default=None,
         description="Optional class name (e.g. 'JSS 1') to route the message to a single class stream.",
     )
+    target_school_id: Optional[str] = Field(
+        default=None,
+        description=(
+            "Super-admin only: route the message privately to a specific school. "
+            "When null and sender is super_admin → global cross-school broadcast."
+        ),
+    )
     message_type: MessageType = "announcement"
     content: str = Field(min_length=1, max_length=20000)
     attachment_url: Optional[str] = Field(
@@ -47,6 +54,7 @@ class Message(BaseModel):
     school_id: Optional[str] = None
     target_role: TargetRole = "all"
     target_class: Optional[str] = None
+    target_school_id: Optional[str] = None
     message_type: MessageType = "announcement"
     content: str
     attachment_url: Optional[str] = None

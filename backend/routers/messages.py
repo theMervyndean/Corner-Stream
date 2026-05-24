@@ -22,32 +22,55 @@ async def create_message(
     """Admins / teachers broadcast content, assignments or learning materials.
 
     Scoping rules:
-    - school_admin / super_admin: may target any role + any class in their school.
+    - super_admin: may target any role; may set target_school_id to privately
+      route to a single school, or leave null for a global cross-school broadcast.
+    - school_admin: messages stay inside their school; target_school_id is forced
+      to None. Their default audience (when not explicitly overridden) is "admin"
+      so admin chatter doesn't bleed out to teachers/students/parents.
     - teacher: may only target classes within their assigned_classes list.
     """
     db = get_db()
+    role = user.get("role")
+    target_school_id = payload.target_school_id
+    target_role = payload.target_role
 
-    # Teacher class scoping — they cannot blast a class they aren't teaching.
-    if user.get("role") == "teacher" and is_scoped_teacher(user):
-        allowed = set(teacher_assigned_classes(user))
-        if payload.target_class and payload.target_class not in allowed:
-            raise HTTPException(
-                status_code=403,
-                detail="You can only message classes you are assigned to",
-            )
-        # A scoped teacher with no class assignment cannot blast a school-wide message.
-        if not payload.target_class and not allowed:
-            raise HTTPException(
-                status_code=403,
-                detail="You have no assigned classes — cannot send messages",
-            )
+    if role == "super_admin":
+        # Optional school targeting — validate the school exists if provided.
+        if target_school_id:
+            exists = await db.schools.find_one({"id": target_school_id}, {"_id": 0, "id": 1})
+            if not exists:
+                raise HTTPException(status_code=404, detail="Target school not found")
+    elif role == "school_admin":
+        # Private invariant: school admins cannot redirect their messages to
+        # other schools, and their audience defaults to admin-only.
+        target_school_id = None
+        if not target_role:
+            target_role = "admin"
+    elif role == "teacher":
+        # Teachers cannot target admins or other schools.
+        target_school_id = None
+        if target_role == "admin":
+            raise HTTPException(status_code=403, detail="Teachers cannot send admin-only messages")
+        if is_scoped_teacher(user):
+            allowed = set(teacher_assigned_classes(user))
+            if payload.target_class and payload.target_class not in allowed:
+                raise HTTPException(
+                    status_code=403,
+                    detail="You can only message classes you are assigned to",
+                )
+            if not payload.target_class and not allowed:
+                raise HTTPException(
+                    status_code=403,
+                    detail="You have no assigned classes — cannot send messages",
+                )
 
     msg = Message(
         sender_id=user["id"],
-        sender_role=user["role"],
+        sender_role=role,
         school_id=user.get("school_id"),
-        target_role=payload.target_role,
+        target_role=target_role,
         target_class=payload.target_class,
+        target_school_id=target_school_id,
         message_type=payload.message_type,
         content=payload.content,
         attachment_url=payload.attachment_url,
@@ -80,9 +103,9 @@ async def my_stream(user: dict = Depends(get_current_user)):
         role_buckets.append("students")
     elif role == "parent":
         role_buckets.append("parents")
-    # admins read everything in their school — we still match "all" + every bucket
     elif role in ("school_admin", "super_admin"):
-        role_buckets.extend(["teachers", "students", "parents"])
+        # Admins see admin-only chatter + every role bucket inside their visibility scope.
+        role_buckets.extend(["admin", "teachers", "students", "parents"])
 
     # Determine the user's class(es) for class-stream matching
     user_classes: List[str] = []
@@ -102,16 +125,41 @@ async def my_stream(user: dict = Depends(get_current_user)):
         ).to_list(50)
         user_classes = list({k["class_name"] for k in kids if k.get("class_name")})
 
-    # Mongo query
-    q: dict = {"target_role": {"$in": role_buckets}}
+    # Mongo query (use $and so we can combine multiple OR clauses safely)
+    and_clauses: List[dict] = [{"target_role": {"$in": role_buckets}}]
+
+    # School scoping — non-super-admin users can see:
+    #   (a) messages from their own school
+    #   (b) super-admin messages targeting their school via target_school_id
+    #   (c) super-admin global broadcasts (school_id null AND target_school_id null)
     if role != "super_admin":
-        q["school_id"] = school_id
-    # target_class match: either the doc has no class restriction OR it matches one of ours
-    q["$or"] = [
-        {"target_class": None},
-        {"target_class": {"$exists": False}},
-        {"target_class": {"$in": user_classes}} if user_classes else {"target_class": "__never__"},
-    ]
+        and_clauses.append({
+            "$or": [
+                {"school_id": school_id},
+                {"target_school_id": school_id},
+                {"$and": [{"school_id": None}, {"target_school_id": None}]},
+            ],
+        })
+
+    # target_class scoping
+    if user_classes:
+        and_clauses.append({
+            "$or": [
+                {"target_class": None},
+                {"target_class": {"$exists": False}},
+                {"target_class": {"$in": user_classes}},
+            ],
+        })
+    else:
+        # Users with no class context only see school-wide messages (no class-targeted).
+        and_clauses.append({
+            "$or": [
+                {"target_class": None},
+                {"target_class": {"$exists": False}},
+            ],
+        })
+
+    q = {"$and": and_clauses}
 
     docs = await db.messages.find(q, {"_id": 0}).sort("created_at", -1).to_list(500)
     # Decorate each with an `unread` flag for the client badge logic

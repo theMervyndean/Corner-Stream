@@ -94,6 +94,7 @@ export default function SuperAdmin() {
   const [composeForm, setComposeForm] = useState({
     message_type: "announcement",
     target_role: "all",
+    target_school_id: "__all__",
     content: "",
     attachment_url: "",
   });
@@ -127,10 +128,11 @@ export default function SuperAdmin() {
         message_type: composeForm.message_type,
         target_role: composeForm.target_role,
         target_class: null,
+        target_school_id: composeForm.target_school_id === "__all__" ? null : composeForm.target_school_id,
         content: body,
         attachment_url: composeForm.attachment_url.trim() || null,
       });
-      toast.success("Sent globally");
+      toast.success(composeForm.target_school_id === "__all__" ? "Sent globally" : "Sent to selected school");
       setComposeForm((f) => ({ ...f, content: "", attachment_url: "" }));
       loadMessages();
     } catch (e) {
@@ -784,14 +786,26 @@ export default function SuperAdmin() {
               <Select value={composeForm.target_role} onValueChange={(v) => setComposeForm((f) => ({ ...f, target_role: v }))}>
                 <SelectTrigger data-testid="super-msg-target-role"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All schools — everyone</SelectItem>
+                  <SelectItem value="all">Everyone</SelectItem>
+                  <SelectItem value="admin">Admins only</SelectItem>
                   <SelectItem value="teachers">All teachers</SelectItem>
                   <SelectItem value="students">All students</SelectItem>
                   <SelectItem value="parents">All parents</SelectItem>
                 </SelectContent>
               </Select>
-              <p className="text-[11px] text-slate-500 mt-1">Admin-only broadcasts require a backend role-enum extension (follow-up).</p>
+              <p className="text-[11px] text-slate-500 mt-1">"Admins only" reaches school administrators in the targeted school(s).</p>
             </div>
+          </div>
+          <div className="mt-3">
+            <Label className="text-xs">Target school</Label>
+            <Select value={composeForm.target_school_id} onValueChange={(v) => setComposeForm((f) => ({ ...f, target_school_id: v }))}>
+              <SelectTrigger data-testid="super-msg-target-school"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__all__">All Schools (Global)</SelectItem>
+                {(schools || []).map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <p className="text-[11px] text-slate-500 mt-1">Pick a specific school to route the message privately, or keep "All Schools" for a cross-platform broadcast.</p>
           </div>
           <div className="mt-3">
             <Label className="text-xs">Content</Label>
