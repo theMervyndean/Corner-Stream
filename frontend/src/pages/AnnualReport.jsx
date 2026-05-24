@@ -46,6 +46,31 @@ export default function AnnualReport() {
   const { student, school, subjects, skill_ratings, overall_average, promotion_status, qr_code, principal_signature } = data;
   const promoted = promotion_status?.startsWith("Promoted");
 
+  // ─── Lossless multi-term aggregation guardrail ───────────────────────────
+  // Backend already supplies per-term totals (score.total = ca_score + exam_score,
+  // and ca_score is the sum of ca_scores[] for new-format rows). The two helpers
+  // below are defensive: they coerce stringified numerals from legacy rows and
+  // recompute the row average client-side if the server value is missing/zero,
+  // so a single mixed term (legacy + new) never produces a blank/NaN cell.
+  const coerceTermValue = (v) => {
+    if (v == null || v === "") return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  };
+  const computeRowAverage = (row) => {
+    const vals = TERMS
+      .map((t) => coerceTermValue(row?.terms?.[t]))
+      .filter((n) => n !== null);
+    if (!vals.length) return 0;
+    const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
+    return Math.round(avg * 100) / 100;
+  };
+
+  // Single source of truth for the cumulative table column count, so the
+  // empty-state colSpan auto-resizes if TERMS or trailing summary columns
+  // ever change. Columns = Subject + (3 terms) + Average + Grade.
+  const cumulativeColCount = TERMS.length + 3;
+
   return (
     <div className="min-h-screen bg-slate-100 py-10 print:bg-white print:py-0" data-testid="annual-report">
       <div className="max-w-4xl mx-auto px-6 no-print mb-4 flex items-center justify-between">
@@ -98,15 +123,25 @@ export default function AnnualReport() {
             </tr>
           </thead>
           <tbody>
-            {subjects.map((s) => (
-              <tr key={s.subject} className="even:bg-slate-50">
-                <td className="p-2">{s.subject}</td>
-                {TERMS.map((t) => <td key={t} className="p-2 text-center">{s.terms[t] != null ? s.terms[t] : <span className="text-slate-300">—</span>}</td>)}
-                <td className="p-2 text-center font-semibold">{s.average}</td>
-                <td className="p-2 text-center cs-text-blue font-bold">{s.grade}</td>
-              </tr>
-            ))}
-            {!subjects.length && <tr><td className="p-3 text-center text-slate-400" colSpan={TERMS.length + 3}>No scores recorded for this session.</td></tr>}
+            {subjects.map((s) => {
+              const rowAvg = (s.average != null && Number(s.average) > 0) ? s.average : computeRowAverage(s);
+              return (
+                <tr key={s.subject} className="even:bg-slate-50" data-testid={`annual-row-${s.subject}`}>
+                  <td className="p-2">{s.subject}</td>
+                  {TERMS.map((t) => {
+                    const v = coerceTermValue(s.terms?.[t]);
+                    return (
+                      <td key={t} className="p-2 text-center" data-testid={`annual-${s.subject}-${t}`}>
+                        {v != null ? v : <span className="text-slate-300">—</span>}
+                      </td>
+                    );
+                  })}
+                  <td className="p-2 text-center font-semibold">{rowAvg}</td>
+                  <td className="p-2 text-center cs-text-blue font-bold">{s.grade}</td>
+                </tr>
+              );
+            })}
+            {!subjects.length && <tr><td className="p-3 text-center text-slate-400" colSpan={cumulativeColCount}>No scores recorded for this session.</td></tr>}
           </tbody>
         </table>
 
