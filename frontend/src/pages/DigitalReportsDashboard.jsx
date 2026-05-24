@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/lib/auth.jsx";
 import { api, formatApiError } from "@/lib/api";
 import { toast } from "sonner";
+import Navbar from "@/components/Navbar.jsx";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,18 +15,45 @@ import LockedOverlay from "@/components/LockedOverlay.jsx";
 import {
   LayoutDashboard, Users, GraduationCap, BookOpen, ClipboardList, FileText,
   Settings, LogOut, FileSpreadsheet, Trash2, Plus, Lock, Award, Printer,
-  ChevronRight, Sparkles,
+  ChevronRight, Sparkles, CreditCard, CheckCircle2, ArrowRight,
 } from "lucide-react";
 
 const TABS = [
-  { key: "overview",   label: "Overview",    icon: LayoutDashboard },
-  { key: "students",   label: "Students",    icon: Users },
-  { key: "classes",    label: "Classes",     icon: GraduationCap },
-  { key: "subjects",   label: "Subjects",    icon: BookOpen },
-  { key: "scores",     label: "Score entry", icon: ClipboardList },
-  { key: "reports",    label: "Reports",     icon: FileText },
-  { key: "profile",    label: "Profile",     icon: Settings },
+  { key: "overview",     label: "Overview",     icon: LayoutDashboard },
+  { key: "students",     label: "Students",     icon: Users },
+  { key: "users",        label: "Teachers",     icon: GraduationCap },
+  { key: "classes",      label: "Classes",      icon: BookOpen },
+  { key: "subjects",     label: "Subjects",     icon: BookOpen },
+  { key: "scores",       label: "Score entry",  icon: ClipboardList },
+  { key: "reports",      label: "Reports",      icon: FileText },
+  { key: "subscription", label: "Subscription", icon: CreditCard },
+  { key: "profile",      label: "Profile",      icon: Settings },
 ];
+
+// Pricing mirror — read-only display so admins on this tier can see upgrade paths.
+const DR_PRICING = {
+  cbt_essentials: {
+    name: "CBT Essentials", "1_term": 40000, "2_terms": 70000, "full_session": 110000,
+    blurb: "Run computer-based exams with auto-graded MCQ + True/False.",
+    features: ["CBT exam builder", "MCQ + True/False", "Auto-grading & attempts log", "Class-level publishing"],
+  },
+  digital_reports: {
+    name: "Digital Reports", "1_term": 50000, "2_terms": 90000, "full_session": 140000,
+    blurb: "Per-term digital report cards with QR verification and annual averaging.",
+    features: ["Termly report cards", "Annual cumulative report", "QR-verified PDFs", "Per-column CA scoring"],
+  },
+  financial_ledger: {
+    name: "Financial Ledger", "1_term": 40000, "2_terms": 70000, "full_session": 110000,
+    blurb: "Fee tracking, debt-lock controls and parent visibility.",
+    features: ["Per-student fee balance", "Debt-lock on results", "Bursary dashboard", "Parent fee visibility"],
+  },
+  unified_enterprise: {
+    name: "Unified Enterprise", full_session: 200000,
+    blurb: "Everything in CBT, Digital Reports and Financial Ledger — bundled.",
+    features: ["All CBT features", "All Digital Reports", "All Financial Ledger", "Priority support"],
+  },
+};
+const DR_DURS = [{ k: "1_term", l: "1 Term" }, { k: "2_terms", l: "2 Terms" }, { k: "full_session", l: "Full Session" }];
 
 export default function DigitalReportsDashboard({ school: initialSchool, refreshOuter }) {
   const { logout } = useAuth();
@@ -568,13 +596,127 @@ export default function DigitalReportsDashboard({ school: initialSchool, refresh
     </div>
   );
 
-  const panes = { overview: <Overview />, students: <StudentsTab />, classes: <ClassesTab />, subjects: <SubjectsTab />, scores: <ScoresTab />, reports: <ReportsTab />, profile: <ProfileTab /> };
+  // ─── Teachers/Users tab — minimal read-only roster ───
+  const [usersList, setUsersList] = useState([]);
+  const [usersLoading, setUsersLoading] = useState(false);
+  useEffect(() => {
+    if (tab !== "users") return;
+    setUsersLoading(true);
+    api.get("/users").then(({ data }) => setUsersList(data.users || []))
+      .catch((e) => toast.error(formatApiError(e.response?.data?.detail) || e.message))
+      .finally(() => setUsersLoading(false));
+  }, [tab]);
+  const UsersTab = () => (
+    <div data-testid="dr-users-tab">
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h2 className="font-display font-bold cs-text-navy text-2xl">Teachers & Staff</h2>
+          <p className="text-sm text-slate-500 mt-1">Read-only roster of users registered to your school. Full management lives in the Unified Enterprise plan.</p>
+        </div>
+      </div>
+      <div className="cs-card overflow-x-auto">
+        <Table>
+          <TableHeader>
+            <TableRow style={{ backgroundColor: brand }}>
+              <TableHead className="text-white">Name</TableHead>
+              <TableHead className="text-white">Email</TableHead>
+              <TableHead className="text-white">Role</TableHead>
+              <TableHead className="text-white">Class teacher of</TableHead>
+              <TableHead className="text-white">Assigned classes</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {usersList.map((u, i) => (
+              <TableRow key={u.id} className={i % 2 ? "bg-slate-50" : ""} data-testid={`dr-user-row-${u.id}`}>
+                <TableCell className="font-semibold">{u.name || "—"}</TableCell>
+                <TableCell className="text-xs">{u.email}</TableCell>
+                <TableCell><Badge className="cs-bg-navy text-white">{u.role}</Badge></TableCell>
+                <TableCell className="text-xs">{u.is_class_teacher ? (u.assigned_classes?.[0] || "Yes") : "—"}</TableCell>
+                <TableCell className="text-xs">{(u.assigned_classes || []).join(", ") || "—"}</TableCell>
+              </TableRow>
+            ))}
+            {!usersLoading && !usersList.length && (
+              <TableRow><TableCell colSpan={5} className="text-center text-slate-500 py-8">No teachers registered yet.</TableCell></TableRow>
+            )}
+            {usersLoading && (
+              <TableRow><TableCell colSpan={5} className="text-center text-slate-500 py-8">Loading…</TableCell></TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </div>
+    </div>
+  );
+
+  // ─── Subscription tab — read-only tier cards ───
+  const SubscriptionTab = () => (
+    <div data-testid="dr-subscription-tab">
+      <div className="mb-4">
+        <h2 className="font-display font-bold cs-text-navy text-2xl">Subscription</h2>
+        <p className="text-sm text-slate-500 mt-1">
+          You are currently on the <span className="font-semibold cs-text-navy">{DR_PRICING[school.subscription_tier]?.name || school.subscription_tier}</span> plan.
+          To upgrade, WhatsApp <a href="https://wa.me/2348141880550" target="_blank" rel="noreferrer" className="cs-text-blue font-semibold hover:underline">+234 814 188 0550</a>.
+        </p>
+      </div>
+      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-5">
+        {Object.entries(DR_PRICING).map(([k, t]) => {
+          const isCurrent = school.subscription_tier === k;
+          const price = t.full_session ?? null;
+          const featured = k === "unified_enterprise";
+          return (
+            <div
+              key={k}
+              className={`cs-card p-6 flex flex-col ${featured ? "tier-featured" : ""} ${isCurrent ? "ring-2 ring-emerald-500" : ""}`}
+              data-testid={`dr-subscribe-card-${k}`}
+            >
+              <h3 className="font-display font-bold cs-text-navy text-lg">{t.name}</h3>
+              {featured && <span className="inline-block mt-1 text-[10px] uppercase tracking-wider font-bold cs-text-green">★ Most popular</span>}
+              {isCurrent && <span className="inline-block mt-1 text-[10px] uppercase tracking-wider font-bold text-emerald-700">★ Current plan</span>}
+              {t.blurb && <p className="text-xs text-slate-500 mt-2 leading-relaxed">{t.blurb}</p>}
+              <div className="mt-4">
+                {price ? (
+                  <>
+                    <div className="font-display text-3xl font-extrabold cs-text-navy">₦{price.toLocaleString()}</div>
+                    <div className="text-[11px] text-slate-500 uppercase tracking-wider mt-1">per school · Full Session</div>
+                  </>
+                ) : (
+                  <div className="text-sm text-slate-400 italic">Custom pricing</div>
+                )}
+              </div>
+              {Array.isArray(t.features) && (
+                <ul className="mt-4 space-y-1.5" data-testid={`dr-subscribe-features-${k}`}>
+                  {t.features.map((f) => (
+                    <li key={f} className="flex items-start gap-2 text-xs text-slate-700">
+                      <CheckCircle2 size={13} className="cs-text-green flex-shrink-0 mt-0.5" />
+                      <span>{f}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <a
+                href={`https://wa.me/2348141880550?text=${encodeURIComponent(`Hello Corner Streams — ${school.name} would like to upgrade to ${t.name}.`)}`}
+                target="_blank"
+                rel="noreferrer"
+                className={`mt-5 inline-flex items-center justify-center rounded-full text-[11px] sm:text-xs font-semibold whitespace-nowrap px-2.5 sm:px-3 py-1.5 leading-tight ${isCurrent ? "bg-slate-200 text-slate-500 cursor-not-allowed pointer-events-none" : "cs-bg-green text-white hover:opacity-90"}`}
+                data-testid={`dr-subscribe-btn-${k}`}
+                onClick={(e) => { if (isCurrent) e.preventDefault(); }}
+              >
+                {isCurrent ? "Current plan" : <>Upgrade via WhatsApp <ArrowRight size={12} className="ml-1" /></>}
+              </a>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+
+  const panes = { overview: <Overview />, students: <StudentsTab />, users: <UsersTab />, classes: <ClassesTab />, subjects: <SubjectsTab />, scores: <ScoresTab />, reports: <ReportsTab />, subscription: <SubscriptionTab />, profile: <ProfileTab /> };
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: "#fdfdf8" }}>
+      <Navbar variant="dashboard" />
       <Sidebar />
       {locked && <LockedOverlay school={school} onUnlocked={refresh} />}
-      <main className="ml-16 sm:ml-56 p-4 sm:p-8" data-testid="dr-dashboard">
+      <main className="ml-16 sm:ml-56 pt-14 p-4 sm:p-8" data-testid="dr-dashboard">
         {panes[tab]}
       </main>
 
