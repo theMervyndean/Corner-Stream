@@ -3,6 +3,29 @@ import ReactDOM from "react-dom/client";
 import "@/index.css";
 import App from "@/App";
 
+// ─── Global ResizeObserver loop-error suppression ───────────────────────────
+// Chromium fires "ResizeObserver loop completed with undelivered notifications"
+// as a benign noise event whenever observers cascade in a single frame (common
+// with chart/table layout libraries). The CRA / webpack dev overlay treats it
+// as a runtime crash and pops an ugly red overlay over the entire app. This
+// listener swallows ONLY that specific message and lets every other error
+// surface normally.
+const RO_LOOP_MSG = "ResizeObserver loop completed with undelivered notifications";
+const RO_LOOP_LEGACY = "ResizeObserver loop limit exceeded";
+window.addEventListener("error", (e) => {
+  if (e && typeof e.message === "string" && (e.message.includes(RO_LOOP_MSG) || e.message.includes(RO_LOOP_LEGACY))) {
+    e.stopImmediatePropagation();
+    e.preventDefault();
+  }
+});
+window.addEventListener("unhandledrejection", (e) => {
+  const msg = String(e?.reason?.message || e?.reason || "");
+  if (msg.includes(RO_LOOP_MSG) || msg.includes(RO_LOOP_LEGACY)) {
+    e.stopImmediatePropagation();
+    e.preventDefault();
+  }
+});
+
 const root = ReactDOM.createRoot(document.getElementById("root"));
 root.render(
   <React.StrictMode>
