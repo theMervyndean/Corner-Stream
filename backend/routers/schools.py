@@ -2,11 +2,85 @@
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from typing import Optional, List, Literal
-from db import get_db, now_iso, default_classes, SCHOOL_TYPES
+from db import get_db, now_iso, default_classes, SCHOOL_TYPES, _calc_grade
 from auth_utils import get_current_user, require_roles
 from audit_log import log_event, EVENT_CLASS_ADDED, EVENT_CLASS_REMOVED
 
 router = APIRouter(prefix="/schools", tags=["schools"])
+
+
+async def _realign_scores_to_new_structure(
+    db, school_id: str, new_weights: List[int], new_exam_max: int,
+) -> dict:
+    """Mid-term resiliency: when ca_weights length and/or exam_max change, walk
+    every score doc for this school and resize/clamp in place. Never wipes data.
+
+    Rules:
+    - Resize ca_scores to len(new_weights): truncate tail when shrinking, pad
+      with 0 when growing.
+    - Clamp each ca_scores[i] to new_weights[i] (so a column that lost weight
+      doesn't leave an over-cap value behind).
+    - Clamp exam_score to new_exam_max.
+    - Rebuild derived scalars: ca_score = sum(ca_scores), total = ca_score +
+      exam_score, grade = _calc_grade(total).
+    - Legacy docs (no ca_scores) get a fresh zero-filled array sized to the new
+      length, seeded with the clamped legacy ca_score in column 0.
+
+    Returns a small summary {resized, clamped_ca, clamped_exam, total_seen}.
+    """
+    new_len = len(new_weights)
+    cursor = db.scores.find({"school_id": school_id}, {"_id": 0})
+    summary = {"resized": 0, "clamped_ca": 0, "clamped_exam": 0, "total_seen": 0}
+    async for doc in cursor:
+        summary["total_seen"] += 1
+        old_arr = doc.get("ca_scores")
+        legacy_ca = int(doc.get("ca_score") or 0)
+        # Build new ca_scores array
+        if isinstance(old_arr, list):
+            arr = [int(v or 0) for v in old_arr]
+            if len(arr) != new_len:
+                summary["resized"] += 1
+                if len(arr) > new_len:
+                    arr = arr[:new_len]  # truncate tail
+                else:
+                    arr = arr + [0] * (new_len - len(arr))  # pad with zeros
+        else:
+            # Legacy single-scalar row → reseed
+            summary["resized"] += 1
+            arr = [0] * new_len
+            if new_len > 0:
+                arr[0] = min(legacy_ca, int(new_weights[0]))
+        # Per-column clamp against the new weight caps
+        for i in range(new_len):
+            cap = int(new_weights[i])
+            if arr[i] > cap:
+                arr[i] = cap
+                summary["clamped_ca"] += 1
+            if arr[i] < 0:
+                arr[i] = 0
+        # Exam clamp
+        new_exam = int(doc.get("exam_score") or 0)
+        if new_exam > new_exam_max:
+            new_exam = new_exam_max
+            summary["clamped_exam"] += 1
+        if new_exam < 0:
+            new_exam = 0
+        # Derived scalars
+        ca_total = sum(arr)
+        total = ca_total + new_exam
+        grade = _calc_grade(total)
+        await db.scores.update_one(
+            {"id": doc["id"]},
+            {"$set": {
+                "ca_scores": arr,
+                "ca_score": ca_total,
+                "exam_score": new_exam,
+                "total": total,
+                "grade": grade,
+                "realigned_at": now_iso(),
+            }},
+        )
+    return summary
 
 
 class SchoolUpdate(BaseModel):
@@ -51,6 +125,13 @@ async def my_school(user: dict = Depends(get_current_user)):
 async def update_my_school(payload: SchoolUpdate, user: dict = Depends(require_roles("school_admin"))):
     db = get_db()
     update = {k: v for k, v in payload.model_dump().items() if v is not None}
+    # Capture the pre-update assessment structure so we can detect a real change
+    # to ca_weights / exam_max and re-align existing score docs after the save.
+    pre = await db.schools.find_one(
+        {"id": user["school_id"]}, {"_id": 0, "ca_weights": 1, "ca_max": 1, "exam_max": 1},
+    ) or {}
+    old_weights = list(pre.get("ca_weights") or [])
+    old_exam_max = int(pre.get("exam_max") or 0)
     # Sanitize classes: trim, dedupe (preserve order), drop empty
     if "classes" in update:
         seen = set()
@@ -82,8 +163,7 @@ async def update_my_school(payload: SchoolUpdate, user: dict = Depends(require_r
         if update.get("exam_max") is not None:
             exam_val = int(update["exam_max"])
         else:
-            current = await db.schools.find_one({"id": user["school_id"]}, {"_id": 0, "exam_max": 1})
-            exam_val = int((current or {}).get("exam_max") or 0)
+            exam_val = int(pre.get("exam_max") or 0)
         if exam_val < 1:
             raise HTTPException(status_code=400, detail="Exam max must be at least 1")
         if sum(weights) + exam_val != 100:
@@ -98,8 +178,28 @@ async def update_my_school(payload: SchoolUpdate, user: dict = Depends(require_r
             raise HTTPException(status_code=400, detail="CA + Exam max scores must add to 100")
     update["updated_at"] = now_iso()
     await db.schools.update_one({"id": user["school_id"]}, {"$set": update})
+
+    # ── Mid-term resiliency: re-align existing score docs when the marking
+    # structure actually changed (length or per-column caps or exam_max).
+    # No-op when the shape is unchanged, keeping the hot path zero-cost.
+    realign_summary = None
+    new_weights = update.get("ca_weights") if update.get("ca_weights") is not None else old_weights
+    new_exam_max = int(update.get("exam_max") if update.get("exam_max") is not None else old_exam_max)
+    structure_changed = bool(new_weights) and (
+        len(new_weights) != len(old_weights)
+        or [int(w) for w in new_weights] != [int(w) for w in old_weights]
+        or new_exam_max != old_exam_max
+    )
+    if structure_changed:
+        realign_summary = await _realign_scores_to_new_structure(
+            db, user["school_id"], list(new_weights), new_exam_max,
+        )
+
     school = await db.schools.find_one({"id": user["school_id"]}, {"_id": 0})
-    return {"school": school}
+    out: dict = {"school": school}
+    if realign_summary is not None:
+        out["realignment"] = realign_summary
+    return out
 
 
 # ---- Class roster helpers ----
